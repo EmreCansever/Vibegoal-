@@ -1,0 +1,18 @@
+{
+  "short_name": "VibeGoal",
+  "name": "VibeGoal - Tribün & Canlı Düellolar",
+  "description": "Futbol heyecanını tribün ve düellolarla yaşa!",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "48x48 72x72 96x96 128x128 192x192 256x256 384x384 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#121212",
+  "theme_color": "#00ff88",
+  "display": "standalone",
+  "orientation": "portrait"
+}
