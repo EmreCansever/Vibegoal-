@@ -462,9 +462,12 @@ function CreateRoomModal({ onClose, onCreated, theme }) {
         borderRadius: '28px 28px 0 0',
         border: '1px solid rgba(255,255,255,0.1)',
         borderBottom: 'none',
-        padding: '28px 24px 40px',
+        padding: '28px 20px 40px',
         animation: 'modal-in 0.3s cubic-bezier(.22,.61,.36,1) both',
         boxShadow: '0 -20px 60px rgba(0,0,0,0.6)',
+        maxHeight: '90vh',
+        overflowY: 'auto',
+        boxSizing: 'border-box',
       }}>
         {/* Handle */}
         <div style={{
@@ -511,7 +514,7 @@ function CreateRoomModal({ onClose, onCreated, theme }) {
                 className="form-input"
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="Örn: Elazığ Tayfa, Yazılım Grubu..."
+                placeholder="Örn: Tribün Grubu, Yazılım Grubu..."
                 maxLength={40}
                 style={{
                   width: '100%', padding: '13px 16px', borderRadius: 14,
@@ -614,7 +617,7 @@ function CreateRoomModal({ onClose, onCreated, theme }) {
 function buildRoomFromCode(rawCode) {
   const normalized = rawCode.trim().toUpperCase()
   const slug = normalized.replace(/^VG-?/, '').split('-')[0] || 'ODA'
-  const name = slug === 'ELAZG' ? 'Elazığ Tayfa' : `Grup ${slug}`
+  const name = slug === 'TRIBUN' ? 'Tribün Grubu' : `Grup ${slug}`
   return {
     id: `joined-${normalized}`,
     name,
@@ -692,7 +695,7 @@ function JoinByCode({ onJoined, theme }) {
               value={code}
               onChange={e => { setCode(e.target.value); setStatus('idle') }}
               onKeyDown={e => e.key === 'Enter' && handleJoin()}
-              placeholder="VG-ELAZG-2026 veya https://..."
+              placeholder="VG-TRIBUN-2026 veya https://..."
               style={{
                 width: '100%', padding: '13px 16px', borderRadius: 12,
                 background: bgColor,
@@ -761,7 +764,7 @@ function JoinByCode({ onJoined, theme }) {
         )}
 
         <div style={{ marginTop: 10, fontSize: 10, color: '#444', textAlign: 'center' }}>
-          Örnek kod formatı: <span style={{ color: '#555', fontFamily: 'monospace' }}>VG-ELAZG-2026</span>
+          Örnek kod formatı: <span style={{ color: '#555', fontFamily: 'monospace' }}>VG-TRIBUN-2026</span>
         </div>
       </GlassPanel>
     </div>
@@ -772,6 +775,26 @@ function JoinByCode({ onJoined, theme }) {
    MAIN ROOM SCREEN
 ───────────────────────────────────────────────── */
 
+function filterFakeRooms(rooms) {
+  if (!Array.isArray(rooms)) return []
+  return rooms.filter(r => {
+    const nameLower = (r.name || '').toLowerCase()
+    const idLower = (r.id || '').toLowerCase()
+    return !nameLower.includes('elaz') && 
+           !nameLower.includes('test') && 
+           !nameLower.includes('deneme') &&
+           !nameLower.includes('sahte') &&
+           !nameLower.includes('fake') &&
+           !nameLower.includes('vibegoal') &&
+           !idLower.includes('elaz') &&
+           !idLower.includes('test') &&
+           !idLower.includes('deneme') &&
+           !idLower.includes('sahte') &&
+           !idLower.includes('fake') &&
+           !idLower.includes('vibegoal')
+  })
+}
+
 export default function RoomScreen({ onNavigate, theme, currentUser }) {
   useEffect(() => { injectRoomStyles() }, [])
   const t = theme || THEMES.night
@@ -779,7 +802,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
   const [myRooms, setMyRooms]       = useState(() => {
     try {
       const saved = localStorage.getItem(`vg_my_rooms_${currentUser?.uid}`)
-      return saved ? JSON.parse(saved) : []
+      return saved ? filterFakeRooms(JSON.parse(saved)) : []
     } catch {
       return []
     }
@@ -788,7 +811,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
   const [publicRooms, setPublicRooms] = useState(() => {
     try {
       const saved = localStorage.getItem('vg_public_rooms')
-      return saved ? JSON.parse(saved) : []
+      return saved ? filterFakeRooms(JSON.parse(saved)) : []
     } catch {
       return []
     }
@@ -876,6 +899,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
       position: 'relative',
       paddingBottom: 40,
       transition: 'background 0.4s ease',
+      overflowX: 'hidden',
     }}>
       {/* Ambient glows — tema rengine göre */}
       <div style={{

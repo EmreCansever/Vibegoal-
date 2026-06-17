@@ -102,27 +102,19 @@ export const authService = {
   },
 
   /**
-   * Google / Apple sosyal giriş — Test profiliyle içeri fırlatır
-   * @param {'google'|'apple'} provider
+   * Google / Apple sosyal giriş — Firebase kullanıcısı ile sisteme bağlar
+   * @param {object} firebaseUser
    * @returns {{ success, user }}
    */
-  socialLogin(provider) {
-    const testProfiles = {
-      google: {
-        uid:      'google_test_uid',
-        username: 'GoogleUser',
-        email:    'test@gmail.com',
-        avatar:   '🔵',
-      },
-      apple: {
-        uid:      'apple_test_uid',
-        username: 'AppleUser',
-        email:    'test@icloud.com',
-        avatar:   '🍎',
-      },
-    }
+  socialLogin(firebaseUser) {
+    if (!firebaseUser) return { success: false, error: 'Kullanıcı bilgileri bulunamadı.' }
 
-    const profile = testProfiles[provider] || testProfiles.google
+    const profile = {
+      uid:      firebaseUser.uid,
+      username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Kullanıcı',
+      email:    firebaseUser.email || '',
+      avatar:   firebaseUser.photoURL || '😎',
+    }
 
     // Eğer daha önce kayıtlı değilse oluştur
     const users = lsGet(LS_KEYS.USERS, {})
@@ -130,6 +122,17 @@ export const authService = {
       users[profile.uid] = { ...profile, password: '', createdAt: Date.now() }
       lsSet(LS_KEYS.USERS, users)
       dbService.initProfile(profile.uid, profile.username)
+      if (profile.avatar) {
+        dbService.updateProfile(profile.uid, { avatar: profile.avatar })
+      }
+    } else {
+      const localProfile = dbService.getProfile(profile.uid)
+      if (localProfile) {
+        dbService.updateProfile(profile.uid, {
+          username: profile.username || localProfile.username,
+          avatar: profile.avatar || localProfile.avatar
+        })
+      }
     }
 
     lsSet(LS_KEYS.CURRENT_USER, profile)

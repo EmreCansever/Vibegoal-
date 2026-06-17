@@ -103,6 +103,101 @@ export default function App() {
   const theme = THEMES[themeId] || THEMES.night
 
   useEffect(() => {
+    // Database Cleanup: Purge any remnants of mock/test users from localStorage
+    try {
+      const users = JSON.parse(localStorage.getItem('vg_users') || '{}')
+      const updatedUsers = {}
+      let changed = false
+      const fakes = ['test', 'cyber', 'analyst', 'appleuser', 'googleuser', 'şans', 'uid_178', 'vibegoal']
+
+      Object.keys(users).forEach(uid => {
+        const u = users[uid]
+        const usernameLower = (u.username || '').toLowerCase()
+        const emailLower = (u.email || '').toLowerCase()
+        const uidLower = uid.toLowerCase()
+
+        const isFake = fakes.some(fake => 
+          usernameLower.includes(fake) || 
+          emailLower.includes(fake) || 
+          uidLower.includes(fake)
+        )
+
+        if (isFake) {
+          localStorage.removeItem(`vg_profile_${uid}`)
+          localStorage.removeItem(`vg_predictions_${uid}`)
+          localStorage.removeItem(`vg_answers_${uid}`)
+          localStorage.removeItem(`vg_predict_history_${uid}`)
+          localStorage.removeItem(`vg_calculated_matches_${uid}`)
+          localStorage.removeItem(`vg_resolved_questions_${uid}`)
+          changed = true
+        } else {
+          updatedUsers[uid] = u
+        }
+      })
+
+      if (changed) {
+        localStorage.setItem('vg_users', JSON.stringify(updatedUsers))
+      }
+
+      // If currently logged-in user is a fake/test user, force log out
+      const activeUser = localStorage.getItem('vg_current_user')
+      if (activeUser) {
+        const parsed = JSON.parse(activeUser)
+        const usernameLower = (parsed.username || '').toLowerCase()
+        const emailLower = (parsed.email || '').toLowerCase()
+        const uidLower = (parsed.uid || '').toLowerCase()
+        
+        const currentIsFake = fakes.some(fake => 
+          usernameLower.includes(fake) || 
+          emailLower.includes(fake) || 
+          uidLower.includes(fake)
+        )
+        
+        if (currentIsFake) {
+          localStorage.removeItem('vg_current_user')
+          setCurrentUser(null)
+          setScreen('auth')
+        }
+      }
+
+      // Clean up fake/test/vibegoal rooms from localStorage
+      const filterRooms = (rooms) => {
+        if (!Array.isArray(rooms)) return []
+        return rooms.filter(r => {
+          const nameLower = (r.name || '').toLowerCase()
+          const idLower = (r.id || '').toLowerCase()
+          return !nameLower.includes('elaz') && 
+                 !nameLower.includes('test') && 
+                 !nameLower.includes('deneme') &&
+                 !nameLower.includes('sahte') &&
+                 !nameLower.includes('fake') &&
+                 !nameLower.includes('vibegoal') &&
+                 !idLower.includes('elaz') &&
+                 !idLower.includes('test') &&
+                 !idLower.includes('deneme') &&
+                 !idLower.includes('sahte') &&
+                 !idLower.includes('fake') &&
+                 !idLower.includes('vibegoal')
+        })
+      }
+
+      const publicRooms = localStorage.getItem('vg_public_rooms')
+      if (publicRooms) {
+        localStorage.setItem('vg_public_rooms', JSON.stringify(filterRooms(JSON.parse(publicRooms))))
+      }
+
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('vg_my_rooms_')) {
+          const saved = localStorage.getItem(key)
+          if (saved) {
+            localStorage.setItem(key, JSON.stringify(filterRooms(JSON.parse(saved))))
+          }
+        }
+      })
+    } catch (e) {
+      console.error('Startup cleanup failed:', e)
+    }
+
     // Geliştirici İpucu: Testleri kolaylaştırmak ve sıfır kilometreye dönmek için konsoldan çağrılabilir:
     window.resetApp = () => {
       localStorage.clear()

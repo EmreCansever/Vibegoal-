@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { playClickSound, playGoalSound, playSendSound, playSuccessSound } from '../utils/audioEngine'
 import { THEMES, withGlowOpacity } from '../App'
 import GroupChat from './GroupChat'
 import {
@@ -514,130 +515,132 @@ function Header({ league, setLeague, totalPoints, onNavigate, theme, onCycleThem
 
   return (
     <header style={{
-      padding: '20px 20px 0',
+      padding: '14px 16px 0',
       position: 'sticky', top: 0, zIndex: 100,
       background: `linear-gradient(180deg,${t.bg} 70%,transparent)`,
     }}>
-      {/* Top row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifycontent: 'space-between', marginBottom: 18, gap: 8 }}>
+      {/* Top row — mobilde flex-wrap ile taşmayı önle */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 6, flexWrap: 'wrap' }}>
         {/* Logo */}
         <div 
           onClick={onLogoClick}
-          style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, cursor: 'pointer' }}
         >
           <div style={{
-            width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
             background: `linear-gradient(135deg,${t.accent},${t.accentAlt})`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 22, animation: 'float 3s ease-in-out infinite',
-            boxShadow: `0 0 20px ${t.glowSoft}`,
+            fontSize: 18, animation: 'float 3s ease-in-out infinite',
+            boxShadow: `0 0 16px ${t.glowSoft}`,
           }}>⚽</div>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: '-0.5px', color: '#fff' }}>
+            <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: '-0.5px', color: '#fff', lineHeight: 1.1 }}>
               Vibe<span style={{ color: t.accent }}>Goal</span>
             </div>
-            <div style={{ fontSize: 10, color: '#555', letterSpacing: 2, textTransform: 'uppercase' }}>Live Prediction Arena</div>
+            <div style={{ fontSize: 8, color: '#555', letterSpacing: 1.5, textTransform: 'uppercase' }}>Live Prediction Arena</div>
           </div>
         </div>
 
-        {/* Theme switcher icon */}
-        <button
-          id="theme-switcher"
-          onClick={onCycleTheme}
-          title={`Tema: ${t.label}`}
-          style={{
+        {/* Right-side action buttons — mobilde küçük boyut */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {/* Theme switcher icon */}
+          <button
+            id="theme-switcher"
+            onClick={onCycleTheme}
+            title={`Tema: ${t.label}`}
+            style={{
+              flexShrink: 0,
+              width: 32, height: 32, borderRadius: 9,
+              background: t.glowSoft,
+              border: `1px solid ${t.accent}55`,
+              color: t.accent, fontSize: 14,
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = withGlowOpacity(t.glowSoft, 0.22); e.currentTarget.style.transform = 'scale(1.1) rotate(30deg)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = t.glowSoft; e.currentTarget.style.transform = 'scale(1) rotate(0deg)' }}
+          >
+            {t.id === 'night' ? '🌙' : t.id === 'hell' ? '🔥' : '🕹️'}
+          </button>
+
+          {/* Logout Button */}
+          <button
+            onClick={onLogout}
+            title="Çıkış Yap"
+            style={{
+              flexShrink: 0,
+              width: 32, height: 32, borderRadius: 9,
+              background: 'rgba(244, 63, 94, 0.1)',
+              border: '1px solid rgba(244, 63, 94, 0.35)',
+              color: '#f43f5e', fontSize: 14,
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(244, 63, 94, 0.18)'; e.currentTarget.style.transform = 'scale(1.1)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(244, 63, 94, 0.1)'; e.currentTarget.style.transform = 'scale(1)' }}
+          >
+            🚪
+          </button>
+
+          {/* Rooms nav button — mobilde text-xs */}
+          <button
+            onClick={() => onNavigate && onNavigate('rooms')}
+            title="Oda Yönetimi"
+            style={{
+              flexShrink: 0,
+              padding: '7px 10px', borderRadius: 10,
+              background: 'rgba(255,255,255,0.07)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              color: '#e5e7eb', fontSize: 11, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'Inter,sans-serif',
+              transition: 'all 0.2s ease',
+              display: 'flex', alignItems: 'center', gap: 4,
+              whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = `${t.glowSoft}`; e.currentTarget.style.borderColor = `${t.accent}55`; e.currentTarget.style.color = t.accent }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#e5e7eb' }}
+          >
+            <span style={{ fontSize: 14 }}>🏠</span> Odalar
+          </button>
+
+          {/* Points badge — mobilde kompakt */}
+          <div style={{
             flexShrink: 0,
-            width: 38, height: 38, borderRadius: 11,
+            padding: '5px 10px', borderRadius: 50,
             background: t.glowSoft,
-            border: `1px solid ${t.accent}55`,
-            color: t.accent, fontSize: 16,
-            cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'all 0.2s ease',
-            animation: `${t.pulseAnim} 3s ease-in-out infinite`,
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = withGlowOpacity(t.glowSoft, 0.22); e.currentTarget.style.transform = 'scale(1.1) rotate(30deg)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = t.glowSoft; e.currentTarget.style.transform = 'scale(1) rotate(0deg)' }}
-        >
-          {t.id === 'night' ? '🌙' : t.id === 'hell' ? '🔥' : '🕹️'}
-        </button>
-
-        {/* Logout Button */}
-        <button
-          onClick={onLogout}
-          title="Çıkış Yap"
-          style={{
-            flexShrink: 0,
-            width: 38, height: 38, borderRadius: 11,
-            background: 'rgba(244, 63, 94, 0.1)',
-            border: '1px solid rgba(244, 63, 94, 0.35)',
-            color: '#f43f5e', fontSize: 16,
-            cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'all 0.2s ease',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(244, 63, 94, 0.18)'; e.currentTarget.style.transform = 'scale(1.1)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(244, 63, 94, 0.1)'; e.currentTarget.style.transform = 'scale(1)' }}
-        >
-          🚪
-        </button>
-
-        {/* Rooms nav button */}
-        <button
-          onClick={() => onNavigate && onNavigate('rooms')}
-          title="Oda Yönetimi"
-          style={{
-            flexShrink: 0,
-            padding: '9px 14px', borderRadius: 12,
-            background: 'rgba(255,255,255,0.07)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            color: '#e5e7eb', fontSize: 12, fontWeight: 700,
-            cursor: 'pointer', fontFamily: 'Inter,sans-serif',
-            transition: 'all 0.2s ease',
+            border: `1px solid ${t.accent}66`,
             display: 'flex', alignItems: 'center', gap: 6,
-            whiteSpace: 'nowrap',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = `${t.glowSoft}`; e.currentTarget.style.borderColor = `${t.accent}55`; e.currentTarget.style.color = t.accent }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#e5e7eb' }}
-        >
-          <span style={{ fontSize: 16 }}>🏠</span> Odalar
-        </button>
-
-        {/* Points badge */}
-        <div style={{
-          flexShrink: 0,
-          padding: '8px 14px', borderRadius: 50,
-          background: t.glowSoft,
-          border: `1px solid ${t.accent}66`,
-          animation: `${t.pulseAnim} 2.5s ease-in-out infinite`,
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <span style={{ fontSize: 16 }}>🏆</span>
-          <div>
-            <div style={{
-              fontSize: 18, fontWeight: 900, color: t.accent,
-              backgroundImage: `linear-gradient(90deg,${t.accent},${t.accentAlt},${t.accent})`,
-              backgroundSize: '200% auto',
-              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-              animation: 'shimmer 2s linear infinite',
-            }}>{totalPoints.toLocaleString()}</div>
-            <div style={{ fontSize: 9, color: '#666', letterSpacing: 1 }}>TOPLAM PUAN</div>
+          }}>
+            <span style={{ fontSize: 14 }}>🏆</span>
+            <div>
+              <div style={{
+                fontSize: 14, fontWeight: 900, color: t.accent,
+                backgroundImage: `linear-gradient(90deg,${t.accent},${t.accentAlt},${t.accent})`,
+                backgroundSize: '200% auto',
+                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                animation: 'shimmer 2s linear infinite',
+                lineHeight: 1,
+              }}>{totalPoints.toLocaleString()}</div>
+              <div style={{ fontSize: 8, color: '#666', letterSpacing: 0.5 }}>PUAN</div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* League tabs */}
+      {/* League tabs — mobilde scroll */}
       {!hideLeagues && (
         <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: 4 }} className="scroll-hide">
-          <div style={{ display: 'inline-flex', gap: 8 }}>
+          <div style={{ display: 'inline-flex', gap: 6 }}>
             {LEAGUES.map(l => (
               <button
                 key={l.id}
                 className={`tab-btn${league === l.id ? ' active' : ''}`}
                 onClick={() => setLeague(l.id)}
                 style={{
-                  padding: '8px 16px', borderRadius: 50, border: 'none', cursor: 'pointer',
-                  fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif',
+                  padding: '6px 12px', borderRadius: 50, border: 'none', cursor: 'pointer',
+                  fontSize: 11, fontWeight: 600, fontFamily: 'Inter,sans-serif',
                   background: league === l.id ? t.accent : 'rgba(255,255,255,0.06)',
                   color: league === l.id ? t.tabActiveText : '#aaa',
                   transition: 'all 0.2s ease', whiteSpace: 'nowrap',
@@ -649,7 +652,7 @@ function Header({ league, setLeague, totalPoints, onNavigate, theme, onCycleThem
       )}
 
       {/* Divider */}
-      <div style={{ height: 1, background: 'linear-gradient(90deg,transparent,#333,transparent)', margin: '14px 0 0' }} />
+      <div style={{ height: 1, background: 'linear-gradient(90deg,transparent,#333,transparent)', margin: '10px 0 0' }} />
     </header>
   )
 }
@@ -814,7 +817,7 @@ function LiveFeed({ matches, predictions = {}, loading, error, onRetry, theme, o
         }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>🏟️</div>
           <div style={{ color: '#fff', fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>
-            Bu ligde şu anda canlı maç bulunmuyor bra.
+            Bu ligde şu anda canlı maç bulunmuyor.
           </div>
           <div style={{ color: '#888', fontSize: 12, marginTop: 6 }}>
             Diğer ligleri kontrol et veya yeni maçların başlamasını bekle!
@@ -977,7 +980,7 @@ function BottomActions({ copied, setCopied, onDuel, theme }) {
   const t = theme || THEMES.night
   const [duelPulse, setDuelPulse] = useState(false)
 
-  function shareRoom(roomId = 'elazig-tayfa-abc123') {
+  function shareRoom(roomId = 'vibegoal-grup-abc123') {
     const link = `https://tahminator.app/join/${roomId}`
     navigator.clipboard.writeText(link).catch(() => {
       // Fallback: execCommand
@@ -1201,56 +1204,67 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
                 <div style={{ fontSize: 11, color: '#888', fontWeight: 700, letterSpacing: 1, marginBottom: 12 }}>
                   RAKİBİNİ SEÇ
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {opponents.map(op => {
-                    const sel = opponent === op.id
-                    return (
-                      <div
-                        key={op.id}
-                        onClick={() => setOpponent(op.id)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 14,
-                          padding: '12px 16px', borderRadius: 14,
-                          background: sel ? 'rgba(255,30,30,0.12)' : 'rgba(255,255,255,0.04)',
-                          border: `1px solid ${sel ? 'rgba(255,60,60,0.5)' : 'rgba(255,255,255,0.08)'}`,
-                          cursor: 'pointer', transition: 'all 0.2s ease',
-                          boxShadow: sel ? '0 0 16px rgba(255,30,30,0.2)' : 'none',
-                          animation: 'slide-in 0.3s ease both',
-                        }}
-                      >
-                        <div style={{
-                          width: 40, height: 40, borderRadius: 12,
-                          background: sel ? 'rgba(255,30,30,0.18)' : 'rgba(255,255,255,0.06)',
-                          border: `1.5px solid ${sel ? 'rgba(255,60,60,0.4)' : 'rgba(255,255,255,0.1)'}`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 20, flexShrink: 0,
-                          overflow: 'hidden',
-                        }}>
-                          {op.avatar && op.avatar.startsWith('http') ? (
-                            <img src={op.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.src = '😎' }} />
-                          ) : (
-                            op.avatar
+                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {opponents.length === 0 ? (
+                    <div style={{
+                      padding: '20px', borderRadius: 14, textAlign: 'center',
+                      background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+                      color: '#666', fontSize: 12, fontWeight: 600,
+                      lineHeight: 1.5,
+                    }}>
+                      👥 Gruba henüz başka bir kullanıcı katılmadı. Düello yapabilmek için arkadaşlarını davet et!
+                    </div>
+                  ) : (
+                    opponents.map(op => {
+                      const sel = opponent === op.id
+                      return (
+                        <div
+                          key={op.id}
+                          onClick={() => setOpponent(op.id)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 14,
+                            padding: '12px 16px', borderRadius: 14,
+                            background: sel ? 'rgba(255,30,30,0.12)' : 'rgba(255,255,255,0.04)',
+                            border: `1px solid ${sel ? 'rgba(255,60,60,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                            cursor: 'pointer', transition: 'all 0.2s ease',
+                            boxShadow: sel ? '0 0 16px rgba(255,30,30,0.2)' : 'none',
+                            animation: 'slide-in 0.3s ease both',
+                          }}
+                        >
+                          <div style={{
+                            width: 40, height: 40, borderRadius: 12,
+                            background: sel ? 'rgba(255,30,30,0.18)' : 'rgba(255,255,255,0.06)',
+                            border: `1.5px solid ${sel ? 'rgba(255,60,60,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 20, flexShrink: 0,
+                            overflow: 'hidden',
+                          }}>
+                            {op.avatar && op.avatar.startsWith('http') ? (
+                              <img src={op.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.src = '😎' }} />
+                            ) : (
+                              op.avatar
+                            )}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: sel ? '#ff6666' : '#e5e7eb' }}>
+                              {op.name}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
+                              {op.badge} · {op.points.toLocaleString()} puan
+                            </div>
+                          </div>
+                          {sel && (
+                            <div style={{
+                              width: 22, height: 22, borderRadius: '50%',
+                              background: '#ff3333',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 12, color: '#fff',
+                            }}>⚔</div>
                           )}
                         </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: sel ? '#ff6666' : '#e5e7eb' }}>
-                            {op.name}
-                          </div>
-                          <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
-                            {op.badge} · {op.points.toLocaleString()} puan
-                          </div>
-                        </div>
-                        {sel && (
-                          <div style={{
-                            width: 22, height: 22, borderRadius: '50%',
-                            background: '#ff3333',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 12, color: '#fff',
-                          }}>⚔</div>
-                        )}
-                      </div>
-                    )
-                  })}
+                      )
+                    })
+                  )}
                 </div>
               </div>
 
@@ -1290,7 +1304,7 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
                 <textarea
                   value={penalty}
                   onChange={e => setPenalty(e.target.value)}
-                  placeholder={'Örn: "Kaybeden tüm gruba Elazığ usulü gömme yemek ısmarlar 🍖"'}
+                  placeholder={'Örn: "Kaybeden tüm gruba akşam yemeği ısmarlar 🍖"'}
                   rows={2}
                   maxLength={120}
                   style={{
@@ -2302,6 +2316,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   /* ── Answer handler — sadece 1 kez +5, sonra kilitli ── */
   function handleAnswer(qId, value) {
     if (lockedAnswers.has(qId)) return
+    playClickSound()
     setAnswers(prev => ({ ...prev, [qId]: value }))
   }
 
@@ -2309,6 +2324,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   function commitAnswer(qId) {
     const value = answers[qId]
     if (!value || lockedAnswers.has(qId)) return
+    playSuccessSound()
 
     const newAnswers = { ...answers, [qId]: value }
     setAnswers(newAnswers)
@@ -2358,6 +2374,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
     }
     setMatchPredictions(updated)
     dbService.savePredictions(currentUser.uid, updated)
+    playClickSound()
 
     const match = matches.find(m => m.id === matchId)
     const matchName = match ? `${match.home} vs ${match.away}` : `Maç #${matchId}`
@@ -2391,22 +2408,25 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
   // Dynamic stats
   const myPlayer    = leaderboard.find(p => p.isMe)
-  const successRate = myPlayer ? Math.round((myPlayer.correct / Math.max(myPlayer.total, 1)) * 100) : 68
-  const dynBadge    = computeDynamicBadge({ total: myPlayer?.total || 51, correct: myPlayer?.correct || 35 })
+  const successRate = myPlayer && myPlayer.total > 0 ? Math.round((myPlayer.correct / myPlayer.total) * 100) : 0
+  const dynBadge    = computeDynamicBadge({ total: myPlayer?.total || 0, correct: myPlayer?.correct || 0 })
 
-  const roomName = params.roomName || 'Elazığ Tayfa'
+  const roomName = params.roomName || ''
 
   return (
     <div style={{
-      minHeight: '100vh',
+      height: '100vh',
       background: t.bg,
       fontFamily: 'Inter, sans-serif',
       color: '#fff',
       maxWidth: 600,
       margin: '0 auto',
-      paddingBottom: 100,
+      paddingBottom: 0,
       position: 'relative',
       transition: 'background 0.4s ease',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
     }}>
       {/* Ambient circles — tema rengine göre değişir */}
       <div style={{
@@ -2439,6 +2459,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
           totalPoints={totalPoints}
           theme={t}
           onWin={() => {
+            playGoalSound()
             setTotalPoints(p => p + 50)
             setToastEvent({ points: 50, reason: '🏆 Düello Kazanıldı!', tier: 'exact' })
             updateMyPoints(50, 1)
@@ -2446,8 +2467,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
         />
       )}
 
-      <div style={{ position: 'relative', zIndex: 1 }}>
-        <StatsTicker theme={t} />
+      <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <Header
           league={league} setLeague={setLeague}
           totalPoints={totalPoints} onNavigate={onNavigate}
@@ -2503,7 +2523,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
         {/* ── TAB: MATCHES ─────────────────────── */}
         {activeTab === 'matches' && (
-          <>
+          <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 100 }} className="scroll-hide">
             <LiveFeed
               matches={matches}
               predictions={matchPredictions}
@@ -2535,7 +2555,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                     border: `1px solid ${t.accent}1f`,
                     color: '#666', fontSize: 13, fontWeight: 600,
                   }}>
-                    📭 Canlı maç bulunmadığı için şu an anlık soru bulunmuyor bra.
+                    📭 Canlı maç bulunmadığı için şu an anlık soru bulunmuyor.
                   </div>
                 ) : (
                   questions.map((q, qi) => (
@@ -2657,102 +2677,116 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                 overflow: 'hidden',
                 boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
               }}>
-                <div style={{
-                  padding: '18px 20px 14px',
-                  background: `linear-gradient(135deg,${t.neon},rgba(0,0,0,0))`,
-                  borderBottom: '1px solid rgba(255,255,255,0.07)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}>
-                  <div>
-                    <div style={{ color: '#fff', fontWeight: 800, fontSize: 16 }}>🏠 {roomName}</div>
-                    <div style={{ color: '#666', fontSize: 11, marginTop: 2 }}>Puan durumu canlı güncelleniyor</div>
-                  </div>
-                  {dynBadge && (
-                    <BadgeChip badge={dynBadge} />
-                  )}
-                </div>
-
-                {/* Col headers */}
-                <div style={{
-                  display: 'grid', gridTemplateColumns: '32px 1fr auto auto',
-                  gap: 8, padding: '10px 20px',
-                  borderBottom: '1px solid rgba(255,255,255,0.05)',
-                }}>
-                  <span style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>#</span>
-                  <span style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>OYUNCU</span>
-                  <span style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>TAH.</span>
-                  <span style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>PUAN</span>
-                </div>
-
-                {leaderboard.map((p, idx) => {
-                  const rankColor = p.rank === 1 ? '#facc15' : p.rank === 2 ? '#94a3b8' : p.rank === 3 ? '#fb923c' : '#555'
-                  const rate = Math.round((p.correct / Math.max(p.total, 1)) * 100)
-                  return (
-                    <div
-                      key={p.id}
-                      className="leader-row"
-                      style={{
-                        display: 'grid', gridTemplateColumns: '32px 1fr auto auto',
-                        gap: 8, padding: '14px 20px', alignItems: 'center',
-                        borderBottom: idx < leaderboard.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-                        background: p.isMe ? t.neon : 'transparent',
-                        transition: 'background 0.2s',
-                        animation: `slide-in ${0.2 + idx * 0.08}s ease both`,
-                      }}
-                    >
-                      <div style={{
-                        width: 28, height: 28, borderRadius: 8,
-                        background: p.rank <= 3 ? `${rankColor}22` : 'rgba(255,255,255,0.04)',
-                        border: `1px solid ${p.rank <= 3 ? rankColor + '55' : 'transparent'}`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: p.rank <= 3 ? 14 : 12, color: rankColor, fontWeight: 800,
-                      }}>
-                        {p.rank <= 3 ? ['🥇','🥈','🥉'][p.rank - 1] : p.rank}
-                      </div>
-
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <span style={{
-                            width: 22, height: 22, borderRadius: '50%',
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 14, overflow: 'hidden', flexShrink: 0,
-                          }}>
-                            {p.avatar && p.avatar.startsWith('http') ? (
-                              <img src={p.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.src = '😎' }} />
-                            ) : (
-                              p.avatar || '😎'
-                            )}
-                          </span>
-                          <span style={{ color: p.isMe ? t.accent : '#e5e7eb', fontWeight: p.isMe ? 700 : 500, fontSize: 13 }}>
-                            {p.name}{p.isMe && ' 👈'}
-                          </span>
-                          {/* Rate pill */}
-                          <span style={{
-                            fontSize: 9, padding: '1px 6px', borderRadius: 99, fontWeight: 700,
-                            background: rate >= 70 ? 'rgba(52,211,153,0.15)' : rate < 20 ? 'rgba(251,146,60,0.15)' : 'rgba(255,255,255,0.07)',
-                            color: rate >= 70 ? '#34d399' : rate < 20 ? '#fb923c' : '#666',
-                            border: `1px solid ${rate >= 70 ? 'rgba(52,211,153,0.3)' : rate < 20 ? 'rgba(251,146,60,0.3)' : 'transparent'}`,
-                          }}>%{rate}</span>
-                        </div>
-                        <div style={{ marginTop: 4 }}>
-                          <BadgeChip badge={p.badge} />
-                        </div>
-                      </div>
-
-                      <div style={{ textAlign: 'center', color: '#34d399', fontWeight: 700, fontSize: 14 }}>{p.correct}</div>
-                      <div style={{ textAlign: 'right', color: p.isMe ? t.accent : '#fff', fontWeight: 800, fontSize: 14 }}>{p.points.toLocaleString()}</div>
+                {!roomName ? (
+                  <div style={{ padding: '34px 22px', textAlign: 'center', color: '#888' }}>
+                    <div style={{ fontSize: 34, marginBottom: 12 }}>🏟️</div>
+                    <div style={{ color: '#fff', fontSize: 14, fontWeight: 700, lineHeight: 1.5, marginBottom: 8 }}>
+                      Aktif Tahmin Odası Bulunmuyor
                     </div>
-                  )
-                })}
+                    <div style={{ fontSize: 12, lineHeight: 1.5, color: '#666' }}>
+                      Puan tablosunu canlı görmek ve düellolara katılabilmek için lütfen sağ üstteki <b>"Odalar"</b> sekmesinden bir gruba katılın veya yeni bir grup kurun.
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{
+                      padding: '18px 20px 14px',
+                      background: `linear-gradient(135deg,${t.neon},rgba(0,0,0,0))`,
+                      borderBottom: '1px solid rgba(255,255,255,0.07)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    }}>
+                      <div>
+                        <div style={{ color: '#fff', fontWeight: 800, fontSize: 16 }}>🏠 {roomName}</div>
+                        <div style={{ color: '#666', fontSize: 11, marginTop: 2 }}>Puan durumu canlı güncelleniyor</div>
+                      </div>
+                      {dynBadge && (
+                        <BadgeChip badge={dynBadge} />
+                      )}
+                    </div>
+
+                    {/* Col headers */}
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: '32px 1fr auto auto',
+                      gap: 8, padding: '10px 20px',
+                      borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    }}>
+                      <span style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>#</span>
+                      <span style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>OYUNCU</span>
+                      <span style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>TAH.</span>
+                      <span style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>PUAN</span>
+                    </div>
+
+                    {leaderboard.map((p, idx) => {
+                      const rankColor = p.rank === 1 ? '#facc15' : p.rank === 2 ? '#94a3b8' : p.rank === 3 ? '#fb923c' : '#555'
+                      const rate = Math.round((p.correct / Math.max(p.total, 1)) * 100)
+                      return (
+                        <div
+                          key={p.id}
+                          className="leader-row"
+                          style={{
+                            display: 'grid', gridTemplateColumns: '32px 1fr auto auto',
+                            gap: 8, padding: '14px 20px', alignItems: 'center',
+                            borderBottom: idx < leaderboard.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                            background: p.isMe ? t.neon : 'transparent',
+                            transition: 'background 0.2s',
+                            animation: `slide-in ${0.2 + idx * 0.08}s ease both`,
+                          }}
+                        >
+                          <div style={{
+                            width: 28, height: 28, borderRadius: 8,
+                            background: p.rank <= 3 ? `${rankColor}22` : 'rgba(255,255,255,0.04)',
+                            border: `1px solid ${p.rank <= 3 ? rankColor + '55' : 'transparent'}`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: p.rank <= 3 ? 14 : 12, color: rankColor, fontWeight: 800,
+                          }}>
+                            {p.rank <= 3 ? ['🥇','🥈','🥉'][p.rank - 1] : p.rank}
+                          </div>
+
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{
+                                width: 22, height: 22, borderRadius: '50%',
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: 14, overflow: 'hidden', flexShrink: 0,
+                              }}>
+                                {p.avatar && p.avatar.startsWith('http') ? (
+                                  <img src={p.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.src = '😎' }} />
+                                ) : (
+                                  p.avatar || '😎'
+                                )}
+                              </span>
+                              <span style={{ color: p.isMe ? t.accent : '#e5e7eb', fontWeight: p.isMe ? 700 : 500, fontSize: 13 }}>
+                                {p.name}{p.isMe && ' 👈'}
+                              </span>
+                              {/* Rate pill */}
+                              <span style={{
+                                fontSize: 9, padding: '1px 6px', borderRadius: 99, fontWeight: 700,
+                                background: rate >= 70 ? 'rgba(52,211,153,0.15)' : rate < 20 ? 'rgba(251,146,60,0.15)' : 'rgba(255,255,255,0.07)',
+                                color: rate >= 70 ? '#34d399' : rate < 20 ? '#fb923c' : '#666',
+                                border: `1px solid ${rate >= 70 ? 'rgba(52,211,153,0.3)' : rate < 20 ? 'rgba(251,146,60,0.3)' : 'transparent'}`,
+                              }}>%{rate}</span>
+                            </div>
+                            <div style={{ marginTop: 4 }}>
+                              <BadgeChip badge={p.badge} />
+                            </div>
+                          </div>
+
+                          <div style={{ textAlign: 'center', color: '#34d399', fontWeight: 700, fontSize: 14 }}>{p.correct}</div>
+                          <div style={{ textAlign: 'right', color: p.isMe ? t.accent : '#fff', fontWeight: 800, fontSize: 14 }}>{p.points.toLocaleString()}</div>
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
               </div>
             </section>
 
             {/* Quick stats */}
             <section style={{ padding: '20px 20px 0', display: 'flex', gap: 12 }}>
               {[
-                { icon: '🎯', value: String(myPlayer?.correct || 35), sub: 'isabetli' },
+                { icon: '🎯', value: String(myPlayer?.correct || 0), sub: 'isabetli' },
                 { icon: '📊', value: `%${successRate}`,               sub: 'başarı oranı' },
-                { icon: '🔥', value: String(myPlayer?.total  || 51),  sub: 'toplam tahmin' },
+                { icon: '🔥', value: String(myPlayer?.total   || 0),  sub: 'toplam tahmin' },
               ].map(s => (
                 <div key={s.sub} style={{
                   flex: 1, padding: '14px 12px', borderRadius: 16, textAlign: 'center',
@@ -2765,13 +2799,25 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                 </div>
               ))}
             </section>
-          </>
+          </div>
         )}
 
         {/* ── TAB: CHAT ────────────────────────── */}
         {activeTab === 'chat' && (
-          <div style={{ marginTop: 16 }}>
-            <GroupChat roomName={roomName} onlineCount={3} currentUser={currentUser} userProfile={userProfile} />
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {!roomName ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '40px 22px', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: '#888' }}>
+                <div style={{ fontSize: 34, marginBottom: 12 }}>💬</div>
+                <div style={{ color: '#fff', fontSize: 14, fontWeight: 700, lineHeight: 1.5, marginBottom: 8 }}>
+                  Sohbet Odası Seçilmedi
+                </div>
+                <div style={{ fontSize: 12, lineHeight: 1.5, color: '#666' }}>
+                  Diğer üyelerle mesajlaşabilmek için lütfen sağ üstteki <b>"Odalar"</b> sekmesinden bir gruba katılın veya yeni bir grup kurun.
+                </div>
+              </div>
+            ) : (
+              <GroupChat roomName={roomName} onlineCount={3} currentUser={currentUser} userProfile={userProfile} />
+            )}
           </div>
         )}
       </div>
@@ -3034,7 +3080,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                   background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)',
                   color: '#555', fontSize: 12, fontWeight: 600,
                 }}>
-                  Henüz tahmin yapmadınız bra!
+                  Henüz tahmin yapmadınız!
                 </div>
               ) : (
                 [...getPredictHistory(currentUser.uid)].reverse().map(item => {
@@ -3198,7 +3244,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                 <button
                   onClick={() => {
                     if (!currentPassword || !newPassword) {
-                      setPasswordError('Lütfen tüm alanları doldurun bra.')
+                      setPasswordError('Lütfen tüm alanları doldurun.')
                       return
                     }
                     if (newPassword.length < 6) {

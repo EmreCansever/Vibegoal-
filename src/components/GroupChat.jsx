@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { playSendSound } from '../utils/audioEngine'
 
 /* ─────────────────────────────────────────────────
    MOCK DATA — Grup sohbet geçmişi
@@ -319,7 +320,7 @@ function DateDivider({ label }) {
 /* ─────────────────────────────────────────────────
    MAIN GROUP CHAT COMPONENT
 ───────────────────────────────────────────────── */
-export default function GroupChat({ roomName = 'Elazığ Tayfa', onlineCount = 3, currentUser, userProfile }) {
+export default function GroupChat({ roomName = 'Grup Sohbeti', onlineCount = 3, currentUser, userProfile }) {
   useEffect(() => { injectChatStyles() }, [])
 
   const ME = {
@@ -386,6 +387,7 @@ export default function GroupChat({ roomName = 'Elazığ Tayfa', onlineCount = 3
     setInput('')
     setEmojiPad(false)
     setIsAtBottom(true)
+    playSendSound()
 
     setTimeout(() => scrollToBottom(true), 50)
   }
@@ -444,10 +446,11 @@ export default function GroupChat({ roomName = 'Elazığ Tayfa', onlineCount = 3
   return (
     <div style={{
       display: 'flex', flexDirection: 'column',
-      height: 'calc(100vh - 220px)',
-      minHeight: 480,
+      flex: 1,
+      minHeight: 0,
       background: '#121212',
       position: 'relative',
+      overflow: 'hidden',
     }}>
       {/* ── CHAT HEADER BAR ─────────────────────── */}
       <div style={{
