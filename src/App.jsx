@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import Dashboard from './components/Dashboard'
 import RoomScreen from './components/RoomScreen'
 import AuthScreen from './components/AuthScreen'
+import MatchDetail from './components/MatchDetail'
 import { authService } from './services/dataService'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -93,13 +95,10 @@ function saveTheme(id) {
 export default function App() {
   // Lazily fetch the current user synchronously to prevent visual flickering on refresh
   const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser())
-  const [screen, setScreen]           = useState(() => {
-    const user = authService.getCurrentUser()
-    return user ? 'dashboard' : 'auth'
-  })
   const [params, setParams]           = useState({})
   const [themeId, setThemeId]         = useState(loadTheme)
 
+  const navigateHook = useNavigate()
   const theme = THEMES[themeId] || THEMES.night
 
   useEffect(() => {
@@ -156,7 +155,7 @@ export default function App() {
         if (currentIsFake) {
           localStorage.removeItem('vg_current_user')
           setCurrentUser(null)
-          setScreen('auth')
+          navigateHook('/auth')
         }
       }
 
@@ -210,22 +209,33 @@ export default function App() {
     // Authentication Wall: redirect to auth screen if trying to access protected views without credentials
     if (!activeUser && to !== 'auth') {
       setParams({})
-      setScreen('auth')
+      navigateHook('/auth')
       return
     }
     setParams(extraParams)
-    setScreen(to)
+    if (to === 'dashboard') {
+      navigateHook('/dashboard')
+    } else if (to === 'rooms') {
+      navigateHook('/rooms')
+    } else if (to === 'auth') {
+      navigateHook('/auth')
+    } else if (to.startsWith('match/')) {
+      const matchId = to.split('/')[1]
+      navigateHook(`/match/${matchId}`)
+    } else {
+      navigateHook(`/${to}`)
+    }
   }
 
   function handleAuth(user) {
     setCurrentUser(user)
-    setScreen('dashboard')
+    navigateHook('/dashboard')
   }
 
   function handleLogout() {
     authService.logout()
     setCurrentUser(null)
-    setScreen('auth')
+    navigateHook('/auth')
   }
 
   function cycleTheme() {
@@ -235,33 +245,48 @@ export default function App() {
     saveTheme(next)
   }
 
-  // If there's no authenticated session, strictly lock the viewport to the AuthScreen
-  if (!currentUser || screen === 'auth') {
-    return <AuthScreen onAuth={handleAuth} />
-  }
-
-  // Room Screen
-  if (screen === 'rooms') {
-    return (
-      <RoomScreen
-        onNavigate={navigate}
-        params={params}
-        theme={theme}
-        onCycleTheme={cycleTheme}
-        currentUser={currentUser}
-      />
-    )
-  }
-
-  // Main Dashboard
   return (
-    <Dashboard
-      onNavigate={navigate}
-      params={params}
-      theme={theme}
-      onCycleTheme={cycleTheme}
-      currentUser={currentUser}
-      onLogout={handleLogout}
-    />
+    <Routes>
+      <Route path="/auth" element={
+        currentUser ? <Navigate to="/dashboard" replace /> : <AuthScreen onAuth={handleAuth} />
+      } />
+      <Route path="/dashboard" element={
+        currentUser ? (
+          <Dashboard
+            onNavigate={navigate}
+            params={params}
+            theme={theme}
+            onCycleTheme={cycleTheme}
+            currentUser={currentUser}
+            onLogout={handleLogout}
+          />
+        ) : (
+          <Navigate to="/auth" replace />
+        )
+      } />
+      <Route path="/rooms" element={
+        currentUser ? (
+          <RoomScreen
+            onNavigate={navigate}
+            params={params}
+            theme={theme}
+            onCycleTheme={cycleTheme}
+            currentUser={currentUser}
+          />
+        ) : (
+          <Navigate to="/auth" replace />
+        )
+      } />
+      <Route path="/match/:id" element={
+        currentUser ? (
+          <MatchDetail
+            theme={theme}
+          />
+        ) : (
+          <Navigate to="/auth" replace />
+        )
+      } />
+      <Route path="*" element={<Navigate to={currentUser ? "/dashboard" : "/auth"} replace />} />
+    </Routes>
   )
 }

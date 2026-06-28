@@ -18,7 +18,15 @@ import {
   LEAGUE_IDS,
   CURRENT_SEASON,
 } from '../services/footballApi'
-import { dbService } from '../services/dataService'
+import { dbService, authService } from '../services/dataService'
+import { deleteCurrentUser } from '../services/firebase'
+import { getAuthErrorMessage } from '../utils/authErrors'
+import {
+  determinePollingInterval,
+  generateDynamicQuestions,
+  checkAndResolveAllQuestions,
+  isMatchPoolLockedByRecentEvent,
+} from '../utils/questionEngine'
 
 const PREDICT_HISTORY_KEY = (uid) => `vg_predict_history_${uid}`
 
@@ -93,138 +101,7 @@ function saveLockedQuestionDefinition(uid, question) {
   } catch {}
 }
 
-function generateDynamicQuestions(liveMatches, uid) {
-  const generated = []
-  const lockedDefs = getLockedQuestionDefinitions(uid)
 
-  liveMatches.forEach(match => {
-    // Sadece henüz tamamlanmamış (FT dışındaki) canlı maçlar için soru üretilir
-    if (match.status === 'FT') return
-
-    const q1Id = `${match.id}_next_goal`
-    const q2Id = `${match.id}_ends_at_score`
-    const q3Id = `${match.id}_half_or_full_time`
-
-    // Q1: Sıradaki Golü Kim Atar?
-    if (lockedDefs[q1Id]) {
-      generated.push(lockedDefs[q1Id])
-    } else {
-      generated.push({
-        id: q1Id,
-        matchId: match.id,
-        text: `⚽ Sıradaki Gol: ${match.home} - ${match.away} maçında sıradaki golü kim atar?`,
-        options: [
-          { label: `🏠 ${match.home}`, value: 'home', reward: 15, points: '+15 Puan' },
-          { label: `✈️ ${match.away}`, value: 'away', reward: 15, points: '+15 Puan' },
-          { label: '🧱 Gol Olmaz', value: 'none', reward: 25, points: '+25 Puan' },
-        ],
-        deadline: 10,
-        type: 'next_goal',
-        savedScore: { home: match.homeScore, away: match.awayScore },
-        savedMinute: match.minute
-      })
-    }
-
-    // Q2: Maç bu skorla mı biter?
-    if (lockedDefs[q2Id]) {
-      generated.push(lockedDefs[q2Id])
-    } else {
-      generated.push({
-        id: q2Id,
-        matchId: match.id,
-        text: `📊 Skor Korunur mu: Maçın şu anki skoru ${match.homeScore}-${match.awayScore}. Maç bu skorla mı biter?`,
-        options: [
-          { label: '✅ Evet (Skor değişmez)', value: 'yes', reward: 15, points: '+15 Puan' },
-          { label: '💥 Hayır (En az 1 gol daha olur)', value: 'no', reward: 15, points: '+15 Puan' },
-        ],
-        deadline: 7,
-        type: 'ends_at_score',
-        savedScore: { home: match.homeScore, away: match.awayScore },
-        savedMinute: match.minute
-      })
-    }
-
-    // Q3: İlk yarı/Maç sonu skoru ne olur?
-    if (lockedDefs[q3Id]) {
-      generated.push(lockedDefs[q3Id])
-    } else {
-      const isFirstHalf = match.minute <= 45
-      generated.push({
-        id: q3Id,
-        matchId: match.id,
-        text: `⏱️ Skor Tahmini: Şu an dakika ${match.minute}. ${isFirstHalf ? 'İlk yarı' : 'Maç sonu'} skoru ne olur?`,
-        options: [
-          { label: `🏠 ${match.home} ${isFirstHalf ? 'Öne Geçer' : 'Kazanır'}`, value: 'home', reward: 20, points: '+20 Puan' },
-          { label: `✈️ ${match.away} ${isFirstHalf ? 'Öne Geçer' : 'Kazanır'}`, value: 'away', reward: 20, points: '+20 Puan' },
-          { label: '🤝 Beraberlik', value: 'draw', reward: 15, points: '+15 Puan' },
-        ],
-        deadline: 5,
-        type: 'half_or_full_time',
-        savedScore: { home: match.homeScore, away: match.awayScore },
-        savedMinute: match.minute
-      })
-    }
-  })
-
-  return generated
-}
-
-function resolveDynamicCorrectAnswer(relatedQ, finishedMatch) {
-  const { type, savedScore, savedMinute } = relatedQ
-  const finalHome = Number(finishedMatch.homeScore)
-  const finalAway = Number(finishedMatch.awayScore)
-
-  if (type === 'next_goal') {
-    const savedH = Number(savedScore.home)
-    const savedA = Number(savedScore.away)
-
-    if (finalHome === savedH && finalAway === savedA) {
-      return 'none'
-    }
-    const deltaH = finalHome - savedH
-    const deltaA = finalAway - savedA
-
-    if (deltaH > deltaA) {
-      return 'home'
-    } else if (deltaA > deltaH) {
-      return 'away'
-    } else {
-      return 'home'
-    }
-  }
-
-  if (type === 'ends_at_score') {
-    const savedH = Number(savedScore.home)
-    const savedA = Number(savedScore.away)
-
-    if (finalHome === savedH && finalAway === savedA) {
-      return 'yes'
-    } else {
-      return 'no'
-    }
-  }
-
-  if (type === 'half_or_full_time') {
-    if (savedMinute <= 45) {
-      const htHome = finishedMatch.halftimeScore?.home !== null && finishedMatch.halftimeScore?.home !== undefined
-        ? Number(finishedMatch.halftimeScore.home)
-        : finalHome
-      const htAway = finishedMatch.halftimeScore?.away !== null && finishedMatch.halftimeScore?.away !== undefined
-        ? Number(finishedMatch.halftimeScore.away)
-        : finalAway
-
-      if (htHome > htAway) return 'home'
-      if (htAway > htHome) return 'away'
-      return 'draw'
-    } else {
-      if (finalHome > finalAway) return 'home'
-      if (finalAway > finalHome) return 'away'
-      return 'draw'
-    }
-  }
-
-  return 'none'
-}
 
 const BADGES = {
   suru:    { icon: '🐑', label: 'Sürü Psikolojisi Kurbanı', color: '#a78bfa' },
@@ -2009,6 +1886,11 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [passwordError, setPasswordError]     = useState('')
   const [passwordSuccess, setPasswordSuccess] = useState('')
 
+  // Account Deletion state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteError, setDeleteError]             = useState('')
+  const [deleteLoading, setDeleteLoading]         = useState(false)
+
   // Toggles state
   const [soundEnabled, setSoundEnabled] = useState(() => {
     return localStorage.getItem('vg_settings_sound') !== 'false'
@@ -2016,6 +1898,27 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [notifEnabled, setNotifEnabled] = useState(() => {
     return localStorage.getItem('vg_settings_notif') !== 'false'
   })
+
+  const handleDeleteAccount = async () => {
+    setDeleteLoading(true)
+    setDeleteError('')
+    try {
+      // 1. Firebase authentication and firestore deletion
+      await deleteCurrentUser()
+      
+      // 2. Local storage cleanup
+      authService.deleteAccount(currentUser.uid)
+      
+      // 3. Close modal and logout
+      setDeleteConfirmOpen(false)
+      onLogout()
+    } catch (err) {
+      console.error('Account deletion error:', err)
+      setDeleteError(getAuthErrorMessage(err))
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
 
   function handleUpdateProfile(updates) {
     const prof = dbService.getProfile(currentUser.uid) || dbService.initProfile(currentUser.uid, currentUser.username)
@@ -2150,9 +2053,16 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
     })
   }, [currentUser])
 
+  const answersRef = useRef(answers)
+  const lockedAnswersRef = useRef(lockedAnswers)
+  useEffect(() => {
+    answersRef.current = answers
+    lockedAnswersRef.current = lockedAnswers
+  }, [answers, lockedAnswers])
+
   /* ────────────────────────────────────────────────
      useEffect: Lig değişince veya retry tetiklenince
-     API'den maçları çek ve 45s aralıklarla sessizce arka planda güncelle
+     API'den maçları çek ve akıllı polling aralıklarıyla arka planda güncelle
   ─────────────────────────────────────────────── */
   useEffect(() => {
     const selectedLeague = LEAGUES.find(l => l.id === league)
@@ -2160,11 +2070,11 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
     const apiId = selectedLeague.apiId
     let cancelled = false
+    let timeoutId = null
 
     async function loadMatches(isPoll = false) {
       if (!isPoll) setLoading(true)
       try {
-        // Sadece canlı maçları dene!
         const data = await fetchLiveMatches(apiId)
         if (cancelled) return
 
@@ -2176,11 +2086,26 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
         setMatches(mappedData)
 
+        // Anlık Sonuçlandırma (Instant Resolution)
+        checkAndResolveAllQuestions(
+          mappedData,
+          currentUser.uid,
+          answersRef.current,
+          lockedAnswersRef.current,
+          updateMyPoints,
+          setTotalPoints,
+          setToastEvent
+        )
+
         // Dinamik soruları üret
         const questionsList = generateDynamicQuestions(mappedData, currentUser.uid)
         setDynamicQuestions(questionsList)
 
         setError(null)
+
+        // Akıllı Polling Zamanlama
+        const nextInterval = determinePollingInterval(mappedData)
+        timeoutId = setTimeout(() => loadMatches(true), nextInterval)
       } catch (err) {
         if (cancelled) return
         console.error('[VibeGoal API]', err)
@@ -2189,24 +2114,20 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
           setMatches([])
           setDynamicQuestions([])
         }
+        // Hata durumunda 15 saniye sonra tekrar dene
+        timeoutId = setTimeout(() => loadMatches(true), 15000)
       } finally {
         if (!cancelled && !isPoll) setLoading(false)
       }
     }
 
-    // Initial fetch
     loadMatches(false)
-
-    // Polling interval
-    const pollInterval = setInterval(() => {
-      loadMatches(true)
-    }, 45000)
 
     return () => {
       cancelled = true
-      clearInterval(pollInterval)
+      if (timeoutId) clearTimeout(timeoutId)
     }
-  }, [league, retryCount, currentUser, getCalculatedMatches])
+  }, [league, retryCount, currentUser, getCalculatedMatches, updateMyPoints])
 
   /* ── checkPredictions — API'den FT gelen maç için
      kullanıcının tahminini kontrol et ve puan ver. ── */
@@ -2242,49 +2163,6 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
     // Persist this calculated match to storage immediately
     saveCalculatedMatch(currentUser.uid, finishedMatch.id)
-
-    // Anlık soru puanlaması — kilitli cevapları da kontrol et
-    const lockedDefs = getLockedQuestionDefinitions(currentUser.uid)
-    lockedAnswers.forEach(qId => {
-      const resolvedList = getResolvedQuestions(currentUser.uid)
-      if (resolvedList.includes(qId)) return
-
-      const prediction = answers[qId]
-      if (!prediction) return
-
-      // Bu soru bu maça aitse sonucu hesapla
-      const relatedQ = lockedDefs[qId]
-      if (!relatedQ || relatedQ.matchId !== finishedMatch.id) return
-
-      const correctAnswer = resolveDynamicCorrectAnswer(relatedQ, finishedMatch)
-      const selectedOpt = relatedQ.options.find(o => o.value === prediction)
-      const qResult = calculateQuestionPoints(
-        prediction,
-        correctAnswer,
-        selectedOpt?.reward ?? 15
-      )
-
-      saveResolvedQuestion(currentUser.uid, qId)
-
-      const isWon = qResult.points > 0
-      const correctOptLabel = relatedQ.options.find(o => o.value === correctAnswer)?.label || correctAnswer
-      updatePredictHistoryStatus(
-        currentUser.uid,
-        `q_${qId}`,
-        isWon ? 'won' : 'lost',
-        `Doğru: ${correctOptLabel}`
-      )
-
-      if (qResult.points > 0) {
-        setToastEvent({
-          points: qResult.points,
-          reason: `Anlık Soru Doğru! ${qResult.correct ? 'Tebrikler' : ''} 🎯`,
-          tier: 'exact',
-        })
-        setTotalPoints(p => p + qResult.points)
-        updateMyPoints(qResult.points, 1)
-      }
-    })
 
     // Update state isCalculated flag
     setMatches(prev =>
@@ -2467,6 +2345,110 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
         />
       )}
 
+      {/* Hesabımı Sil Onay Modalı */}
+      {deleteConfirmOpen && (
+        <>
+          {/* Backdrop Overlay */}
+          <div
+            onClick={() => { if (!deleteLoading) setDeleteConfirmOpen(false) }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 1000,
+              background: 'rgba(0,0,0,0.82)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              animation: 'overlay-in 0.22s ease both',
+            }}
+          />
+
+          {/* Modal Container */}
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 'calc(100% - 32px)', maxWidth: 400,
+            zIndex: 1001,
+            background: 'linear-gradient(180deg,#1c1010,#120808)',
+            borderRadius: 24,
+            border: '1px solid rgba(255, 68, 68, 0.25)',
+            padding: '24px 20px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.8), 0 0 30px rgba(255, 68, 68, 0.08)',
+            animation: 'modal-in 0.3s cubic-bezier(.22,.61,.36,1) both',
+            fontFamily: 'Inter, sans-serif',
+            color: '#fff',
+            boxSizing: 'border-box'
+          }}>
+            {/* Warning Icon */}
+            <div style={{ fontSize: 44, textAlign: 'center', marginBottom: 14 }}>⚠️</div>
+
+            {/* Title */}
+            <h2 style={{ fontSize: 16, fontWeight: 800, textAlign: 'center', color: '#ff4444', margin: '0 0 10px' }}>
+              Hesap Silme Onayı
+            </h2>
+
+            {/* Warning Message */}
+            <p style={{ fontSize: 12.5, color: '#aaa', lineHeight: 1.5, textAlign: 'center', margin: '0 0 20px' }}>
+              Hesabınızı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
+            </p>
+
+            {/* Error Banner */}
+            {deleteError && (
+              <div style={{
+                padding: '10px 12px', borderRadius: 10,
+                background: 'rgba(255,68,68,0.08)',
+                border: '1px solid rgba(255,68,68,0.25)',
+                color: '#ff6b6b', fontSize: 11.5, fontWeight: 600,
+                marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6,
+                textAlign: 'left'
+              }}>
+                <span>⚠️</span>
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            {/* Actions Grid */}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setDeleteConfirmOpen(false)}
+                disabled={deleteLoading}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: 12,
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: '#ccc', fontSize: 13, fontWeight: 700,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+              >
+                İptal
+              </button>
+
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteLoading}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: 12,
+                  background: 'linear-gradient(135deg,#ff3300,#cc1100)',
+                  border: 'none',
+                  color: '#fff', fontSize: 13, fontWeight: 800,
+                  cursor: deleteLoading ? 'not-allowed' : 'pointer',
+                  opacity: deleteLoading ? 0.7 : 1,
+                  fontFamily: 'inherit',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  boxShadow: '0 0 15px rgba(255, 51, 0, 0.25)'
+                }}
+              >
+                {deleteLoading ? (
+                  <span style={{ animation: 'spin-slow 0.8s linear infinite', display: 'inline-block' }}>⏳</span>
+                ) : (
+                  'Hesabımı Sil'
+                )}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <Header
           league={league} setLeague={setLeague}
@@ -2531,7 +2513,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
               error={matchesError}
               onRetry={handleRetry}
               theme={t}
-              onMatchClick={(m) => setSelectedPredictMatch(m)}
+              onMatchClick={(m) => onNavigate('match/' + m.id)}
             />
 
             {/* Enhanced QuestionPanel with scoring */}
@@ -2558,110 +2540,140 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                     📭 Canlı maç bulunmadığı için şu an anlık soru bulunmuyor.
                   </div>
                 ) : (
-                  questions.map((q, qi) => (
-                    <div key={q.id} style={{
-                      background: `linear-gradient(135deg,${t.neon},rgba(0,0,0,0.4))`,
-                      border: `1px solid ${answers[q.id] ? t.accent + '4d' : t.accent + '26'}`,
-                      borderRadius: 20, padding: '18px 16px',
-                      animation: `slide-in ${0.1 + qi * 0.08}s ease both`,
-                      position: 'relative', overflow: 'hidden',
-                    }}>
-                      <div style={{ position: 'absolute', bottom: -40, right: -40, width: 100, height: 100, borderRadius: '50%', background: `radial-gradient(circle,${t.neon},transparent)`, pointerEvents: 'none' }} />
+                  questions.map((q, qi) => {
+                    const match = matches.find(m => m.id === q.matchId)
+                    const isRecentEventLocked = match ? isMatchPoolLockedByRecentEvent(match) : false
+                    const isLocked = lockedAnswers.has(q.id) || q.isLocked || isRecentEventLocked
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 14 }}>
-                        <p style={{ color: '#e5e7eb', fontSize: 14, fontWeight: 600, lineHeight: 1.5, margin: 0 }}>{q.text}</p>
-                        <Countdown seconds={q.deadline} />
-                      </div>
+                    return (
+                      <div key={q.id} style={{
+                        background: `linear-gradient(135deg,${t.neon},rgba(0,0,0,0.4))`,
+                        border: `1px solid ${answers[q.id] ? t.accent + '4d' : t.accent + '26'}`,
+                        borderRadius: 20, padding: '18px 16px',
+                        animation: `slide-in ${0.1 + qi * 0.08}s ease both`,
+                        position: 'relative', overflow: 'hidden',
+                      }}>
+                        <div style={{ position: 'absolute', bottom: -40, right: -40, width: 100, height: 100, borderRadius: '50%', background: `radial-gradient(circle,${t.neon},transparent)`, pointerEvents: 'none' }} />
 
-                      {/* FIX #2: Seçenekler — kilitliyse disabled + opak */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {q.options.map(opt => {
-                          const selected  = answers[q.id] === opt.value
-                          const isLocked  = lockedAnswers.has(q.id)
-                          return (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 14 }}>
+                          <p style={{ color: '#e5e7eb', fontSize: 14, fontWeight: 600, lineHeight: 1.5, margin: 0 }}>{q.text}</p>
+                          <Countdown seconds={q.deadline} />
+                        </div>
+
+                        {/* FIX #2: Seçenekler — kilitliyse disabled + opak */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {q.options.map(opt => {
+                            const selected  = answers[q.id] === opt.value
+                            return (
+                              <button
+                                key={opt.value}
+                                className={`q-option${selected && !isLocked ? ' selected' : ''}`}
+                                onClick={() => handleAnswer(q.id, opt.value)}
+                                disabled={isLocked}
+                                style={{
+                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                  padding: '12px 16px', borderRadius: 12,
+                                  border: `1px solid ${
+                                    isLocked && selected ? t.accent + '66'
+                                    : selected ? t.accent
+                                    : 'rgba(255,255,255,0.1)'
+                                  }`,
+                                  background: isLocked && selected
+                                    ? t.neon
+                                    : selected ? `${t.accent}26` : 'rgba(255,255,255,0.04)',
+                                  cursor: isLocked ? 'not-allowed' : 'pointer',
+                                  color: isLocked ? '#666' : '#fff',
+                                  fontFamily: 'Inter,sans-serif', fontWeight: 600, fontSize: 13,
+                                  transition: 'all 0.25s ease',
+                                  opacity: isLocked && !selected ? 0.35 : 1,
+                                }}
+                              >
+                                <span>{opt.label}</span>
+                                <span style={{
+                                  padding: '3px 10px', borderRadius: 50,
+                                  background: selected && !isLocked ? `${t.accent}4d` : 'rgba(255,255,255,0.06)',
+                                  fontSize: 11,
+                                  color: isLocked && selected ? t.accent + '88' : selected ? t.accent : '#555',
+                                  fontWeight: 700,
+                                }}>{opt.points}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+
+                        {/* Scoring breakdown — kilitlenince görünür */}
+                        {scoringBreakdowns[q.id] && (
+                          <ScoringBreakdown breakdown={scoringBreakdowns[q.id]} />
+                        )}
+
+                        {/* FIX #2: Kaydet butonu — 1 kez çalışır, sonra kilitli görünür */}
+                        <div style={{ marginTop: 12 }}>
+                          {isRecentEventLocked ? (
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '10px 14px', borderRadius: 12,
+                              background: 'rgba(239,68,68,0.1)',
+                              border: '1px solid rgba(239,68,68,0.25)',
+                              animation: 'slide-in 0.3s ease both',
+                            }}>
+                              <span style={{ fontSize: 14 }}>⚠️</span>
+                              <span style={{ fontSize: 12, color: '#f87171', fontWeight: 700 }}>
+                                Pozisyon İnceleniyor · Tahminler geçici kilitlendi
+                              </span>
+                            </div>
+                          ) : !lockedAnswers.has(q.id) && q.isLocked ? (
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '10px 14px', borderRadius: 12,
+                              background: 'rgba(255,255,255,0.03)',
+                              border: '1px solid rgba(255,255,255,0.08)',
+                            }}>
+                              <span style={{ fontSize: 14 }}>🔒</span>
+                              <span style={{ fontSize: 12, color: '#888', fontWeight: 600 }}>
+                                Bu soru için tahmin süresi dolmuştur.
+                              </span>
+                            </div>
+                          ) : !lockedAnswers.has(q.id) ? (
                             <button
-                              key={opt.value}
-                              className={`q-option${selected && !isLocked ? ' selected' : ''}`}
-                              onClick={() => handleAnswer(q.id, opt.value)}
-                              disabled={isLocked}
+                              onClick={() => commitAnswer(q.id)}
+                              disabled={!answers[q.id]}
                               style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                padding: '12px 16px', borderRadius: 12,
-                                border: `1px solid ${
-                                  isLocked && selected ? t.accent + '66'
-                                  : selected ? t.accent
-                                  : 'rgba(255,255,255,0.1)'
-                                }`,
-                                background: isLocked && selected
-                                  ? t.neon
-                                  : selected ? `${t.accent}26` : 'rgba(255,255,255,0.04)',
-                                cursor: isLocked ? 'not-allowed' : 'pointer',
-                                color: isLocked ? '#666' : '#fff',
-                                fontFamily: 'Inter,sans-serif', fontWeight: 600, fontSize: 13,
-                                transition: 'all 0.25s ease',
-                                opacity: isLocked && !selected ? 0.35 : 1,
+                                width: '100%', padding: '12px', borderRadius: 12,
+                                background: answers[q.id]
+                                  ? `linear-gradient(135deg,${t.accent}33,${t.accentAlt}26)`
+                                  : 'rgba(255,255,255,0.04)',
+                                border: `1px solid ${answers[q.id] ? t.accent + '66' : 'rgba(255,255,255,0.08)'}`,
+                                color: answers[q.id] ? t.accent : '#444',
+                                fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 13,
+                                cursor: answers[q.id] ? 'pointer' : 'not-allowed',
+                                transition: 'all 0.2s ease',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                boxShadow: answers[q.id] ? `0 0 12px ${t.glowSoft}` : 'none',
                               }}
                             >
-                              <span>{opt.label}</span>
-                              <span style={{
-                                padding: '3px 10px', borderRadius: 50,
-                                background: selected && !isLocked ? `${t.accent}4d` : 'rgba(255,255,255,0.06)',
-                                fontSize: 11,
-                                color: isLocked && selected ? t.accent + '88' : selected ? t.accent : '#555',
-                                fontWeight: 700,
-                              }}>{opt.points}</span>
+                              <span>🔒</span>
+                              {answers[q.id] ? 'Tahmini Kaydet (+5 Puan)' : 'Önce bir seçenek seç'}
                             </button>
-                          )
-                        })}
-                      </div>
-
-                      {/* Scoring breakdown — kilitlenince görünür */}
-                      {scoringBreakdowns[q.id] && (
-                        <ScoringBreakdown breakdown={scoringBreakdowns[q.id]} />
-                      )}
-
-                      {/* FIX #2: Kaydet butonu — 1 kez çalışır, sonra kilitli görünür */}
-                      <div style={{ marginTop: 12 }}>
-                        {!lockedAnswers.has(q.id) ? (
-                          <button
-                            onClick={() => commitAnswer(q.id)}
-                            disabled={!answers[q.id]}
-                            style={{
+                          ) : (
+                            /* KİLİTLİ — disabled görünüm */
+                            <div style={{
                               width: '100%', padding: '12px', borderRadius: 12,
-                              background: answers[q.id]
-                                ? `linear-gradient(135deg,${t.accent}33,${t.accentAlt}26)`
-                                : 'rgba(255,255,255,0.04)',
-                              border: `1px solid ${answers[q.id] ? t.accent + '66' : 'rgba(255,255,255,0.08)'}`,
-                              color: answers[q.id] ? t.accent : '#444',
+                              background: t.neon,
+                              border: `1px solid ${t.accent}33`,
+                              color: t.accent + '88',
                               fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 13,
-                              cursor: answers[q.id] ? 'pointer' : 'not-allowed',
-                              transition: 'all 0.2s ease',
+                              textAlign: 'center',
                               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                              boxShadow: answers[q.id] ? `0 0 12px ${t.glowSoft}` : 'none',
-                            }}
-                          >
-                            <span>🔒</span>
-                            {answers[q.id] ? 'Tahmini Kaydet (+5 Puan)' : 'Önce bir seçenek seç'}
-                          </button>
-                        ) : (
-                          /* KİLİTLİ — disabled görünüm */
-                          <div style={{
-                            width: '100%', padding: '12px', borderRadius: 12,
-                            background: t.neon,
-                            border: `1px solid ${t.accent}33`,
-                            color: t.accent + '88',
-                            fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 13,
-                            textAlign: 'center',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                            opacity: 0.7,
-                            animation: 'slide-in 0.3s ease both',
-                          }}>
-                            <span>✅</span> Tahmin Kaydedildi · Maç sonucu bekleniyor...
-                          </div>
-                        )}
+                              opacity: 0.7,
+                              animation: 'slide-in 0.3s ease both',
+                            }}>
+                              <span>✅</span> Tahmin Kaydedildi · Maç sonucu bekleniyor...
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </section>
@@ -3244,17 +3256,17 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                 <button
                   onClick={() => {
                     if (!currentPassword || !newPassword) {
-                      setPasswordError('Lütfen tüm alanları doldurun.')
+                      setPasswordError('Lütfen tüm alanları doldurunuz.')
                       return
                     }
                     if (newPassword.length < 6) {
-                      setPasswordError('Yeni şifre en az 6 karakter olmalıdır!')
+                      setPasswordError('Yeni şifreniz en az 6 karakterden oluşmalıdır.')
                       return
                     }
                     const users = JSON.parse(localStorage.getItem('vg_users') || '{}')
                     const userRecord = users[currentUser.uid]
                     if (!userRecord) {
-                      setPasswordError('Kullanıcı bulunamadı!')
+                      setPasswordError('Kullanıcı bulunamadı.')
                       return
                     }
                     
@@ -3262,7 +3274,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                     const hashedCurrent = btoa(currentPassword + '_vg_salt_2026')
                     // Check if password match, if user registered through social login it might be empty
                     if (userRecord.password && userRecord.password !== hashedCurrent) {
-                      setPasswordError('Mevcut şifre hatalı!')
+                      setPasswordError('Mevcut şifre hatalıdır. Lütfen kontrol ediniz.')
                       return
                     }
 
@@ -3274,7 +3286,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                     setCurrentPassword('')
                     setNewPassword('')
                     setPasswordError('')
-                    setPasswordSuccess('Şifreniz başarıyla güncellendi! 🔑')
+                    setPasswordSuccess('Şifreniz başarıyla güncellenmiştir.')
                   }}
                   style={{
                     marginTop: 6,
@@ -3295,6 +3307,43 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                   }}
                 >
                   Şifreyi Güncelle
+                </button>
+              </div>
+
+              {/* Delete Account Section */}
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 10,
+                padding: '16px 14px', borderRadius: 14,
+                background: 'rgba(255, 0, 0, 0.02)', border: '1px solid rgba(255, 0, 0, 0.15)',
+                marginTop: 6
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#ff4444', textAlign: 'left' }}>Tehlikeli Bölge</div>
+                <div style={{ fontSize: 10, color: '#888', lineHeight: 1.4, textAlign: 'left' }}>
+                  Hesabınızı kalıcı olarak silmek için aşağıdaki butona tıklayınız. Bu işlem geri alınamaz ve tüm puanlarınız, tahminleriniz silinecektir.
+                </div>
+                <button
+                  onClick={() => {
+                    setDeleteConfirmOpen(true)
+                    setDeleteError('')
+                  }}
+                  style={{
+                    padding: '10px', borderRadius: 10,
+                    background: 'rgba(255, 0, 0, 0.12)',
+                    border: '1px solid rgba(255, 0, 0, 0.3)',
+                    color: '#ff4444', fontSize: 12, fontWeight: 700,
+                    cursor: 'pointer', transition: 'all 0.2s',
+                    fontFamily: 'Inter,sans-serif'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(255, 0, 0, 0.22)'
+                    e.currentTarget.style.borderColor = 'rgba(255, 0, 0, 0.6)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'rgba(255, 0, 0, 0.12)'
+                    e.currentTarget.style.borderColor = 'rgba(255, 0, 0, 0.3)'
+                  }}
+                >
+                  Hesabımı Kalıcı Olarak Sil
                 </button>
               </div>
             </div>

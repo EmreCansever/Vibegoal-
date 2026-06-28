@@ -153,6 +153,14 @@ export const authService = {
   getCurrentUser() {
     return lsGet(LS_KEYS.CURRENT_USER, null)
   },
+
+  /**
+   * Hesabı siler ve oturumu kapatır
+   */
+  deleteAccount(uid) {
+    dbService.deleteProfile(uid)
+    this.logout()
+  },
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -242,5 +250,26 @@ export const dbService = {
   getAnswers(uid) {
     const { _updatedAt: _, ...answers } = lsGet(LS_KEYS.USER_ANSWERS(uid), {})
     return answers
+  },
+
+  /**
+   * Kullanıcı verilerini LocalStorage'dan siler
+   */
+  deleteProfile(uid) {
+    lsDel(LS_KEYS.USER_PROFILE(uid))
+    lsDel(LS_KEYS.USER_PREDS(uid))
+    lsDel(LS_KEYS.USER_ANSWERS(uid))
+
+    // Kullanıcı listesinden çıkar
+    const users = lsGet(LS_KEYS.USERS, {})
+    if (users[uid]) {
+      delete users[uid]
+      lsSet(LS_KEYS.USERS, users)
+    }
+
+    // Ekstra kullanıcıya ait profile, predictions, answers ve calculate cache'leri temizle
+    lsDel(`vg_predict_history_${uid}`)
+    lsDel(`vg_calculated_matches_${uid}`)
+    lsDel(`vg_resolved_questions_${uid}`)
   },
 }

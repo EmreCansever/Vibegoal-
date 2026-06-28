@@ -76,7 +76,7 @@ async function apiFetch(path, params = {}) {
    API fixture objesini → LiveMatchCard formatına dönüştür
 ───────────────────────────────────────────────── */
 function mapFixtureToMatch(fixture) {
-  const { fixture: fix, teams, goals, league, score } = fixture
+  const { fixture: fix, teams, goals, league, score, events, statistics } = fixture
 
   // Maç durumu → dakika
   const statusShort = fix.status?.short || ''
@@ -104,6 +104,8 @@ function mapFixtureToMatch(fixture) {
     },
     // Puan hesaplaması için ekstra alanlar
     isCalculated: false,
+    events: events ?? [],
+    statistics: statistics ?? [],
   }
 }
 

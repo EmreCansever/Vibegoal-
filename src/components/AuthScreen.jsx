@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { authService } from '../services/dataService'
-import { signInWithGoogle, signInWithApple } from '../services/firebase'
+import { signInWithGoogle, signInWithApple, sendPasswordReset } from '../services/firebase'
+import { getAuthErrorMessage } from '../utils/authErrors'
 
 /* ─────────────────────────────────────────────────
    CYBERPUNK NEON GLOW STYLE INJECTION
@@ -131,9 +132,10 @@ function NeonDriftingAura() {
 export default function AuthScreen({ onAuth }) {
   useEffect(() => { injectCyberpunkStyles() }, [])
 
-  const [mode, setMode]               = useState('login') // 'login' | 'register'
+  const [mode, setMode]               = useState('login') // 'login' | 'register' | 'forgot'
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState('')
+  const [successMsg, setSuccessMsg]   = useState('')
   const [shake, setShake]             = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
@@ -146,6 +148,7 @@ export default function AuthScreen({ onAuth }) {
   const switchMode = (targetMode) => {
     setMode(targetMode)
     setError('')
+    setSuccessMsg('')
     setUsername('')
     setEmail('')
     setPassword('')
@@ -157,11 +160,31 @@ export default function AuthScreen({ onAuth }) {
     setTimeout(() => setShake(false), 550)
   }
 
+  // Handle Password Reset Request
+  const handleForgotSubmit = async (e) => {
+    e.preventDefault()
+    if (!email.trim()) {
+      return triggerError('Lütfen e-posta adresinizi giriniz.')
+    }
+    setLoading(true)
+    setError('')
+    setSuccessMsg('')
+    try {
+      await sendPasswordReset(email)
+      setSuccessMsg('Şifre sıfırlama bağlantısı e-posta adresinize gönderilmiştir.')
+    } catch (err) {
+      console.error('Password reset error:', err)
+      triggerError(getAuthErrorMessage(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Handle Log In
   const handleLoginSubmit = (e) => {
     e.preventDefault()
     if (!email.trim() || !password.trim()) {
-      return triggerError('Tüm alanları doldurun!')
+      return triggerError('Lütfen tüm zorunlu alanları doldurunuz.')
     }
     
     setLoading(true)
@@ -171,7 +194,7 @@ export default function AuthScreen({ onAuth }) {
       if (res.success) {
         onAuth(res.user)
       } else {
-        triggerError(res.error)
+        triggerError(getAuthErrorMessage(res.error))
       }
     }, 700)
   }
@@ -180,10 +203,10 @@ export default function AuthScreen({ onAuth }) {
   const handleRegisterSubmit = (e) => {
     e.preventDefault()
     if (!username.trim() || !email.trim() || !password.trim()) {
-      return triggerError('Tüm alanları eksiksiz doldurun!')
+      return triggerError('Lütfen tüm zorunlu alanları doldurunuz.')
     }
     if (password.length < 6) {
-      return triggerError('Şifre en az 6 karakter olmalı.')
+      return triggerError('Şifre çok zayıf. Şifreniz en az 6 karakterden oluşmalıdır.')
     }
 
     setLoading(true)
@@ -193,7 +216,7 @@ export default function AuthScreen({ onAuth }) {
       if (res.success) {
         onAuth(res.user)
       } else {
-        triggerError(res.error)
+        triggerError(getAuthErrorMessage(res.error))
       }
     }, 850)
   }
@@ -216,12 +239,11 @@ export default function AuthScreen({ onAuth }) {
       if (res.success) {
         onAuth(res.user)
       } else {
-        triggerError(res.error || 'Oturum açılamadı.')
+        triggerError(getAuthErrorMessage(res.error || 'Oturum açılamadı.'))
       }
     } catch (err) {
       console.error('Social login error:', err)
-      const errorMsg = err.message || 'Sosyal giriş işlemi sırasında bir hata oluştu.'
-      triggerError(errorMsg)
+      triggerError(getAuthErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -298,34 +320,58 @@ export default function AuthScreen({ onAuth }) {
           <div style={{ position: 'absolute', bottom: 0, left: 16, right: 16, height: 1, background: 'linear-gradient(90deg, transparent, rgba(0, 255, 136, 0.3), transparent)' }} />
 
           {/* Form Tabs */}
-          <div style={{
-            display: 'flex', gap: 4, padding: '4px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255, 255, 255, 0.05)',
-            borderRadius: 14, marginBottom: 24,
-          }}>
-            {[
-              { id: 'login',    label: '🔑 Giriş Yap' },
-              { id: 'register', label: '✨ Kayıt Ol' },
-            ].map(tab => {
-              const active = mode === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => switchMode(tab.id)}
-                  style={{
-                    flex: 1, padding: '12px 8px', borderRadius: 10, border: 'none',
-                    background: active ? 'linear-gradient(135deg, rgba(0, 255, 136, 0.16), rgba(0, 255, 136, 0.08))' : 'transparent',
-                    color: active ? '#00ff88' : '#777',
-                    fontWeight: 700, fontSize: 13,
-                    fontFamily: 'inherit',
-                    cursor: 'pointer', transition: 'all 0.2s ease',
-                    boxShadow: active ? 'inset 0 0 0 1px rgba(0, 255, 136, 0.2)' : 'none',
-                  }}
-                >{tab.label}</button>
-              )
-            })}
-          </div>
+          {mode !== 'forgot' && (
+            <div style={{
+              display: 'flex', gap: 4, padding: '4px',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+              borderRadius: 14, marginBottom: 24,
+            }}>
+              {[
+                { id: 'login',    label: '🔑 Giriş Yap' },
+                { id: 'register', label: '✨ Kayıt Ol' },
+              ].map(tab => {
+                const active = mode === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => switchMode(tab.id)}
+                    style={{
+                      flex: 1, padding: '12px 8px', borderRadius: 10, border: 'none',
+                      background: active ? 'linear-gradient(135deg, rgba(0, 255, 136, 0.16), rgba(0, 255, 136, 0.08))' : 'transparent',
+                      color: active ? '#00ff88' : '#777',
+                      fontWeight: 700, fontSize: 13,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer', transition: 'all 0.2s ease',
+                      boxShadow: active ? 'inset 0 0 0 1px rgba(0, 255, 136, 0.2)' : 'none',
+                    }}
+                  >{tab.label}</button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Forgot Password Header */}
+          {mode === 'forgot' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+              <button
+                type="button"
+                onClick={() => switchMode('login')}
+                style={{
+                  width: 34, height: 34, borderRadius: 10,
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#aaa', fontSize: 16, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'background 0.28s ease',
+                }}
+              >←</button>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>Şifremi Unuttum</div>
+                <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>Resmi şifre sıfırlama e-postası alacaksınız.</div>
+              </div>
+            </div>
+          )}
 
           {/* Error Banner */}
           {error && (
@@ -337,211 +383,309 @@ export default function AuthScreen({ onAuth }) {
               marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8,
             }}>
               <span>⚠️</span>
-              <span>{error}</span>
+              <span style={{ textAlign: 'left' }}>{error}</span>
+            </div>
+          )}
+
+          {/* Success Banner */}
+          {successMsg && (
+            <div style={{
+              padding: '12px 14px', borderRadius: 12,
+              background: 'rgba(0, 255, 136, 0.08)',
+              border: '1px solid rgba(0, 255, 136, 0.25)',
+              color: '#00ff88', fontSize: 13, fontWeight: 600,
+              marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span>✅</span>
+              <span style={{ textAlign: 'left' }}>{successMsg}</span>
             </div>
           )}
 
           {/* Form Content */}
-          <form onSubmit={mode === 'login' ? handleLoginSubmit : handleRegisterSubmit}
-                style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-            {/* Username Field (Register Only) */}
-            {mode === 'register' && (
+          {mode === 'forgot' ? (
+            <form onSubmit={handleForgotSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Email Field */}
               <div>
-                <label style={{ display: 'block', fontSize: 10, color: 'rgba(255, 255, 255, 0.45)', fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: 'uppercase' }}>
-                  Kullanıcı Adı
+                <label style={{ display: 'block', fontSize: 10, color: 'rgba(255, 255, 255, 0.45)', fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: 'uppercase', textAlign: 'left' }}>
+                  E-Posta Adresi
                 </label>
                 <input
-                  id="reg-username"
+                  id="forgot-email"
                   className="cyber-input"
-                  type="text"
-                  placeholder="SkorTahminci"
-                  value={username}
-                  onChange={e => { setUsername(e.target.value); setError('') }}
-                  maxLength={20}
-                  autoComplete="off"
+                  type="email"
+                  placeholder="ornek@vibe.com"
+                  value={email}
+                  onChange={e => { setEmail(e.target.value); setError(''); setSuccessMsg('') }}
+                  autoComplete="email"
                   style={{
                     width: '100%', padding: '14px 16px', borderRadius: 12,
                     color: '#fff', fontSize: 14, fontFamily: 'inherit',
                   }}
                 />
               </div>
-            )}
 
-            {/* Email Field */}
-            <div>
-              <label style={{ display: 'block', fontSize: 10, color: 'rgba(255, 255, 255, 0.45)', fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: 'uppercase' }}>
-                E-Posta
-              </label>
-              <input
-                id={mode === 'login' ? 'login-email' : 'reg-email'}
-                className="cyber-input"
-                type="email"
-                placeholder="ornek@vibe.com"
-                value={email}
-                onChange={e => { setEmail(e.target.value); setError('') }}
-                autoComplete="email"
+              {/* Submit Button */}
+              <button
+                id="forgot-submit"
+                type="submit"
+                disabled={loading}
                 style={{
-                  width: '100%', padding: '14px 16px', borderRadius: 12,
-                  color: '#fff', fontSize: 14, fontFamily: 'inherit',
+                  width: '100%', padding: '16px', borderRadius: 12,
+                  background: 'linear-gradient(135deg, #00ff88, #00b35e)',
+                  border: 'none', color: '#040406',
+                  fontWeight: 800, fontSize: 14,
+                  fontFamily: 'inherit',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.8 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                  animation: 'glow-pulse 2.5s ease-in-out infinite',
+                  transition: 'all 0.2s ease',
+                  marginTop: 6,
                 }}
-              />
-            </div>
+              >
+                {loading ? (
+                  <span style={{ animation: 'spin-slow 0.8s linear infinite', display: 'inline-block' }}>⚽</span>
+                ) : (
+                  <><span>✉️</span> Bağlantı Gönder</>
+                )}
+              </button>
 
-            {/* Password Field */}
-            <div>
-              <label style={{ display: 'block', fontSize: 10, color: 'rgba(255, 255, 255, 0.45)', fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: 'uppercase' }}>
-                Şifre
-              </label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  id={mode === 'login' ? 'login-password' : 'reg-password'}
-                  className="cyber-input"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={e => { setPassword(e.target.value); setError('') }}
-                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                  style={{
-                    width: '100%', padding: '14px 16px', borderRadius: 12,
-                    color: '#fff', fontSize: 14, fontFamily: 'inherit',
-                    paddingRight: 48,
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(p => !p)}
-                  style={{
-                    position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', color: 'rgba(255, 255, 255, 0.3)', cursor: 'pointer', fontSize: 16,
-                  }}
-                >{showPassword ? '🙈' : '👁'}</button>
-              </div>
+              <button
+                type="button"
+                onClick={() => switchMode('login')}
+                style={{
+                  background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)',
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  marginTop: 10, textDecoration: 'underline'
+                }}
+              >
+                Giriş Ekranına Dön
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={mode === 'login' ? handleLoginSubmit : handleRegisterSubmit}
+                  style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              {/* Password strength bar indicator (Register only) */}
-              {mode === 'register' && password.length > 0 && (
-                <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
-                  {[1, 2, 3, 4].map(step => (
-                    <div key={step} style={{
-                      flex: 1, height: 3, borderRadius: 99,
-                      background: password.length >= step * 2
-                        ? (step <= 2 ? '#ff4d4d' : step === 3 ? '#ffaa00' : '#00ff88')
-                        : 'rgba(255,255,255,0.06)',
-                      transition: 'background 0.3s ease',
-                    }} />
-                  ))}
+              {/* Username Field (Register Only) */}
+              {mode === 'register' && (
+                <div>
+                  <label style={{ display: 'block', fontSize: 10, color: 'rgba(255, 255, 255, 0.45)', fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: 'uppercase', textAlign: 'left' }}>
+                    Kullanıcı Adı
+                  </label>
+                  <input
+                    id="reg-username"
+                    className="cyber-input"
+                    type="text"
+                    placeholder="SkorTahminci"
+                    value={username}
+                    onChange={e => { setUsername(e.target.value); setError('') }}
+                    maxLength={20}
+                    autoComplete="off"
+                    style={{
+                      width: '100%', padding: '14px 16px', borderRadius: 12,
+                      color: '#fff', fontSize: 14, fontFamily: 'inherit',
+                    }}
+                  />
                 </div>
               )}
-            </div>
 
-            {/* Submit Button */}
-            <button
-              id={mode === 'login' ? 'login-submit' : 'register-submit'}
-              type="submit"
-              disabled={loading}
-              style={{
-                width: '100%', padding: '16px', borderRadius: 12,
-                background: 'linear-gradient(135deg, #00ff88, #00b35e)',
-                border: 'none', color: '#040406',
-                fontWeight: 800, fontSize: 14,
-                fontFamily: 'inherit',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.8 : 1,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                animation: 'glow-pulse 2.5s ease-in-out infinite',
-                transition: 'all 0.2s ease',
-                marginTop: 6,
-              }}
-              onMouseEnter={e => { if (!loading) e.currentTarget.style.transform = 'translateY(-1px) scale(1.01)' }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)' }}
-            >
-              {loading ? (
-                <span style={{ animation: 'spin-slow 0.8s linear infinite', display: 'inline-block' }}>⚽</span>
-              ) : (
-                mode === 'login' ? <><span>🚀</span> Sahaya Gir</> : <><span>✨</span> Arena Hesabı Aç</>
+              {/* Email Field */}
+              <div>
+                <label style={{ display: 'block', fontSize: 10, color: 'rgba(255, 255, 255, 0.45)', fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: 'uppercase', textAlign: 'left' }}>
+                  E-Posta
+                </label>
+                <input
+                  id={mode === 'login' ? 'login-email' : 'reg-email'}
+                  className="cyber-input"
+                  type="email"
+                  placeholder="ornek@vibe.com"
+                  value={email}
+                  onChange={e => { setEmail(e.target.value); setError('') }}
+                  autoComplete="email"
+                  style={{
+                    width: '100%', padding: '14px 16px', borderRadius: 12,
+                    color: '#fff', fontSize: 14, fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+
+              {/* Password Field */}
+              <div>
+                <label style={{ display: 'block', fontSize: 10, color: 'rgba(255, 255, 255, 0.45)', fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: 'uppercase', textAlign: 'left' }}>
+                  Şifre
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    id={mode === 'login' ? 'login-password' : 'reg-password'}
+                    className="cyber-input"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={e => { setPassword(e.target.value); setError('') }}
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    style={{
+                      width: '100%', padding: '14px 16px', borderRadius: 12,
+                      color: '#fff', fontSize: 14, fontFamily: 'inherit',
+                      paddingRight: 48,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(p => !p)}
+                    style={{
+                      position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', color: 'rgba(255, 255, 255, 0.3)', cursor: 'pointer', fontSize: 16,
+                    }}
+                  >{showPassword ? '🙈' : '👁'}</button>
+                </div>
+
+                {/* Password strength bar indicator (Register only) */}
+                {mode === 'register' && password.length > 0 && (
+                  <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                    {[1, 2, 3, 4].map(step => (
+                      <div key={step} style={{
+                        flex: 1, height: 3, borderRadius: 99,
+                        background: password.length >= step * 2
+                          ? (step <= 2 ? '#ff4d4d' : step === 3 ? '#ffaa00' : '#00ff88')
+                          : 'rgba(255,255,255,0.06)',
+                        transition: 'background 0.3s ease',
+                      }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Button */}
+              <button
+                id={mode === 'login' ? 'login-submit' : 'register-submit'}
+                type="submit"
+                disabled={loading}
+                style={{
+                  width: '100%', padding: '16px', borderRadius: 12,
+                  background: 'linear-gradient(135deg, #00ff88, #00b35e)',
+                  border: 'none', color: '#040406',
+                  fontWeight: 800, fontSize: 14,
+                  fontFamily: 'inherit',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.8 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                  animation: 'glow-pulse 2.5s ease-in-out infinite',
+                  transition: 'all 0.2s ease',
+                  marginTop: 6,
+                }}
+                onMouseEnter={e => { if (!loading) e.currentTarget.style.transform = 'translateY(-1px) scale(1.01)' }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)' }}
+              >
+                {loading ? (
+                  <span style={{ animation: 'spin-slow 0.8s linear infinite', display: 'inline-block' }}>⚽</span>
+                ) : (
+                  mode === 'login' ? <><span>🚀</span> Sahaya Gir</> : <><span>✨</span> Arena Hesabı Aç</>
+                )}
+              </button>
+
+              {/* Forgot Password Link */}
+              {mode === 'login' && (
+                <div style={{ textAlign: 'center', marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => switchMode('forgot')}
+                    style={{
+                      background: 'none', border: 'none', color: '#00ff88',
+                      fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                      padding: 0, textDecoration: 'underline'
+                    }}
+                  >
+                    Şifremi Unuttum?
+                  </button>
+                </div>
               )}
-            </button>
-          </form>
+            </form>
+          )}
 
-          {/* Social login divider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '22px 0' }}>
-            <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08))' }} />
-            <span style={{ fontSize: 11, color: 'rgba(255, 255, 255, 0.25)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>veya</span>
-            <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent)' }} />
-          </div>
+          {/* Social login elements (hidden in forgot password mode) */}
+          {mode !== 'forgot' && (
+            <>
+              {/* Social login divider */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '22px 0' }}>
+                <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08))' }} />
+                <span style={{ fontSize: 11, color: 'rgba(255, 255, 255, 0.25)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>veya</span>
+                <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent)' }} />
+              </div>
 
-          {/* Social Sign-in grid */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {/* Google */}
-            <button
-              id="google-login"
-              className="cyber-social-btn"
-              onClick={() => handleSocialSignIn('google')}
-              disabled={loading}
-              style={{
-                width: '100%', padding: '14px 16px', borderRadius: 12,
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                color: '#fff', fontSize: 13, fontWeight: 700,
-                fontFamily: 'inherit',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', gap: 12,
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-              </svg>
-              <span>Google ile Giriş Yap</span>
-              <div style={{ marginLeft: 'auto', fontSize: 9, color: 'rgba(0, 255, 136, 0.45)', fontWeight: 800, letterSpacing: 0.5 }}>⚡ Hızlı</div>
-            </button>
-
-            {/* Apple */}
-            <button
-              id="apple-login"
-              className="cyber-social-btn"
-              onClick={() => handleSocialSignIn('apple')}
-              disabled={loading}
-              style={{
-                width: '100%', padding: '14px 16px', borderRadius: 12,
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                color: '#fff', fontSize: 13, fontWeight: 700,
-                fontFamily: 'inherit',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', gap: 12,
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="white" style={{ flexShrink: 0 }}>
-                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-              </svg>
-              <span>Apple ile Giriş Yap</span>
-              <div style={{ marginLeft: 'auto', fontSize: 9, color: 'rgba(0, 255, 136, 0.45)', fontWeight: 800, letterSpacing: 0.5 }}>⚡ Hızlı</div>
-            </button>
-          </div>
-
-          {/* Bottom Switch text link */}
-          <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12.5, color: 'rgba(255, 255, 255, 0.4)' }}>
-            {mode === 'login' ? (
-              <>Henüz hesabın yok mu?{' '}
+              {/* Social Sign-in grid */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* Google */}
                 <button
-                  type="button"
-                  onClick={() => switchMode('register')}
-                  style={{ background: 'none', border: 'none', color: '#00ff88', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
-                >Kayıt Ol →</button>
-              </>
-            ) : (
-              <>Zaten bir hesabın var mı?{' '}
+                  id="google-login"
+                  className="cyber-social-btn"
+                  onClick={() => handleSocialSignIn('google')}
+                  disabled={loading}
+                  style={{
+                    width: '100%', padding: '14px 16px', borderRadius: 12,
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    color: '#fff', fontSize: 13, fontWeight: 700,
+                    fontFamily: 'inherit',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 12,
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                  <span>Google ile Giriş Yap</span>
+                  <div style={{ marginLeft: 'auto', fontSize: 9, color: 'rgba(0, 255, 136, 0.45)', fontWeight: 800, letterSpacing: 0.5 }}>⚡ Hızlı</div>
+                </button>
+
+                {/* Apple */}
                 <button
-                  type="button"
-                  onClick={() => switchMode('login')}
-                  style={{ background: 'none', border: 'none', color: '#00ff88', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
-                >Giriş Yap →</button>
-              </>
-            )}
-          </div>
+                  id="apple-login"
+                  className="cyber-social-btn"
+                  onClick={() => handleSocialSignIn('apple')}
+                  disabled={loading}
+                  style={{
+                    width: '100%', padding: '14px 16px', borderRadius: 12,
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    color: '#fff', fontSize: 13, fontWeight: 700,
+                    fontFamily: 'inherit',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 12,
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="white" style={{ flexShrink: 0 }}>
+                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                  </svg>
+                  <span>Apple ile Giriş Yap</span>
+                  <div style={{ marginLeft: 'auto', fontSize: 9, color: 'rgba(0, 255, 136, 0.45)', fontWeight: 800, letterSpacing: 0.5 }}>⚡ Hızlı</div>
+                </button>
+              </div>
+
+              {/* Bottom Switch text link */}
+              <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12.5, color: 'rgba(255, 255, 255, 0.4)' }}>
+                {mode === 'login' ? (
+                  <>Henüz hesabın yok mu?{' '}
+                    <button
+                      type="button"
+                      onClick={() => switchMode('register')}
+                      style={{ background: 'none', border: 'none', color: '#00ff88', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
+                    >Kayıt Ol →</button>
+                  </>
+                ) : (
+                  <>Zaten bir hesabın var mı?{' '}
+                    <button
+                      type="button"
+                      onClick={() => switchMode('login')}
+                      style={{ background: 'none', border: 'none', color: '#00ff88', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
+                    >Giriş Yap →</button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Footer info text */}

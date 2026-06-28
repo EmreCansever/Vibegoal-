@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
+import { getAuth, signInWithPopup, GoogleAuthProvider, OAuthProvider, sendPasswordResetEmail, deleteUser } from 'firebase/auth';
+import { getFirestore, doc, deleteDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -18,17 +19,19 @@ const hasConfig =
 
 let app;
 let auth;
+let db;
 
 if (hasConfig) {
   try {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     auth = getAuth(app);
+    db = getFirestore(app);
   } catch (err) {
     console.error('Firebase initialization failed:', err);
   }
 }
 
-export { auth };
+export { auth, db };
 
 /**
  * Sign in using Google OAuth popup
@@ -55,4 +58,39 @@ export async function signInWithApple() {
   const provider = new OAuthProvider('apple.com');
   const result = await signInWithPopup(auth, provider);
   return result.user;
+}
+
+/**
+ * Sends a password reset email using Firebase Auth.
+ * @param {string} email
+ * @returns {Promise<void>}
+ */
+export async function sendPasswordReset(email) {
+  if (!auth) {
+    throw new Error('Firebase Authentication konfigüre edilmemiş! Lütfen .env dosyasını geçerli Firebase anahtarlarıyla güncelleyin.');
+  }
+  await sendPasswordResetEmail(auth, email.trim());
+}
+
+/**
+ * Deletes the active user record from Firebase Auth and deletes their Firestore document user record.
+ * @returns {Promise<void>}
+ */
+export async function deleteCurrentUser() {
+  if (!auth || !auth.currentUser) {
+    throw new Error('Aktif kullanıcı oturumu bulunamadı.');
+  }
+  const user = auth.currentUser;
+
+  // 1. Delete Firestore users/{uid} document if Firestore db is active
+  if (db) {
+    try {
+      await deleteDoc(doc(db, 'users', user.uid));
+    } catch (err) {
+      console.warn('Firestore users dökümanı silinemedi:', err);
+    }
+  }
+
+  // 2. Delete auth user record
+  await deleteUser(user);
 }
