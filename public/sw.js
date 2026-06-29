@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vibegoal-cache-v1';
+const CACHE_NAME = 'vibegoal-cache-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -39,10 +39,20 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // Bypass Vite dev-server HMR, socket connections, Chrome extensions, and football API
+  // Bypass:
+  //  - Vite dev-server internals & HMR (/@vite/, /@react-refresh, /@id/, /@fs/)
+  //  - Ham kaynak modülleri (/src/) ve bağımlılıklar (/node_modules/)
+  //  - Vite tarafından versiyonlanan modüller (?t= / ?v=) → bayat React/JS kopyasını önler
+  //  - Modül dosya uzantıları (.jsx/.ts/.tsx/.mjs)
+  //  - socket/ws, futbol API, tarayıcı uzantıları
   if (
-    url.pathname.includes('/@vite/') ||
-    url.pathname.includes('/@react-refresh') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.includes('/.vite/') ||
+    url.search.includes('t=') ||
+    url.search.includes('v=') ||
+    /\.(?:jsx|tsx|ts|mjs)$/.test(url.pathname) ||
     url.pathname.includes('/socket') ||
     url.pathname.includes('/ws') ||
     url.hostname.includes('football.api-sports.io') ||

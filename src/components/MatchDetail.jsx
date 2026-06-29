@@ -83,7 +83,7 @@ function StatRow({ label, homeVal, awayVal, isPercentage = false, theme }) {
 export default function MatchDetail({ theme }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const t = theme || { bg: '#121212', accent: '#00ff88', border: 'rgba(255,255,255,0.09)' };
+  const t = theme || { bg: '#18181b', accent: '#a3e635', border: 'rgba(255,255,255,0.09)' };
 
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(!!db);
@@ -196,22 +196,21 @@ export default function MatchDetail({ theme }) {
   const awayLineup = match.lineups?.[1] || {};
 
   return (
-    <div style={{
-      height: '100vh',
+    <div className="vg-app-shell" style={{
+      height: '100dvh',
       background: t.bg,
       color: '#fff',
-      maxWidth: 600,
-      margin: '0 auto',
       display: 'flex',
       flexDirection: 'column',
       position: 'relative',
       fontFamily: 'Inter, sans-serif',
-      overflow: 'hidden'
+      overflowX: 'hidden',
+      overflowY: 'hidden',
     }}>
       {/* Background decoration */}
       <div style={{
-        position: 'fixed', top: '10%', right: '-20%',
-        width: 300, height: 300, borderRadius: '50%',
+        position: 'absolute', top: '10%', right: '-10%',
+        width: 260, height: 260, borderRadius: '50%',
         background: `radial-gradient(circle, ${withGlowOpacity(t.glowSoft, 0.06)}, transparent 70%)`,
         pointerEvents: 'none', zIndex: 0
       }} />

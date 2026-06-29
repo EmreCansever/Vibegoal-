@@ -1,29 +1,43 @@
-* {
+/* ═══════════════════════════════════════════════════
+   VibeGoal — Global Mobile-First CSS Reset
+   Tüm taşma, scroll ve layout sorunlarını çözer.
+═══════════════════════════════════════════════════ */
+
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body {
-  background: #121212;
-  font-family: 'Inter', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
-  width: 100%;
-  max-width: 100vw;
-}
-
-/* Mobil klavye açılırken sayfa zıplamasını önle */
 html {
+  /* Mobil klavye açılırken sayfa zıplamasını önle */
   height: 100%;
   height: 100dvh;
+  /* iOS overscroll bounce engeli */
+  overscroll-behavior: none;
+  /* Yumuşak kaydırma (anchor / programatik scroll) */
+  scroll-behavior: smooth;
+}
+
+html, body {
+  background: #18181b;
+  font-family: 'Inter', 'Outfit', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Yatay taşmayı kökten engelle — 100vw scrollbar genişliği taşma yapabilir */
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
 }
 
 body {
   height: 100%;
   height: 100dvh;
   overscroll-behavior: none;
+  /* iOS mobil zoom'u önle (input focus'ta) */
   -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Hızlı dokunuş — 300ms gecikmeyi kaldır */
   touch-action: manipulation;
 }
 
@@ -32,15 +46,62 @@ body {
   height: 100%;
   height: 100dvh;
   overflow-x: hidden;
+  max-width: 100%;
+  position: relative;
 }
 
-/* Tüm input/select/textarea mobil taşma önleme */
+/* Uygulama kabuğu — tüm ekranlar mobilde taşmasın */
+.vg-app-shell {
+  width: 100%;
+  max-width: min(600px, 100%);
+  margin: 0 auto;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Alt navigasyon — sabit, tam genişlik, safe-area */
+.vg-bottom-nav {
+  width: 100%;
+  max-width: min(600px, 100%);
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  padding-left: max(6px, env(safe-area-inset-left, 0px));
+  padding-right: max(6px, env(safe-area-inset-right, 0px));
+}
+
+/* Uzun kelimeler / URL taşmasını engelle */
+.vg-app-shell,
+.vg-route {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+img, video, svg {
+  max-width: 100%;
+}
+
+/* ── Form Elemanları ────────────────────────────── */
 input, select, textarea, button {
   max-width: 100%;
   box-sizing: border-box;
+  /* iOS'ta input'larda varsayılan border-radius'u kaldır */
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 0;
 }
 
-/* number input spinner ok gizle (mobil estetik) */
+input, select, textarea {
+  /* iOS Safari zoom'u önle: font-size 16px altıysa zoom olur */
+  font-size: max(16px, 1em);
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* number input spinner gizle (mobil estetik) */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
@@ -48,4 +109,210 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 input[type="number"] {
   -moz-appearance: textfield;
+}
+
+/* ── Scrollbar gizleme + momentum (genel) ────────── */
+.scroll-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  /* iOS akıcı/ataletli kaydırma */
+  -webkit-overflow-scrolling: touch;
+}
+.scroll-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Tüm kaydırılabilir alanlarda iOS momentum scroll */
+[style*="overflow"], .scroll-hide {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Profesyonel ince scrollbar (masaüstü) ───────── */
+@media (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.22);
+    background-clip: padding-box;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  }
+}
+
+/* ── Dokunmatik hedef boyutu (WCAG) ─────────────────
+   NOT: Tüm <button>'lara uygulamak 8px sayfalama noktaları,
+   tepki çipleri gibi küçük kontrolleri patlatıyordu.
+   Bu yüzden opt-in bir yardımcı sınıfa çevrildi. */
+.tap-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ── Safe area insets (iPhone notch) ───────────── */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-x {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* ── Ekran/rota geçiş animasyonu (kütüphanesiz) ──── */
+@keyframes vg-route-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+/* NOT: Son karede transform 'none' olmalı ve will-change KULLANILMAMALI;
+   aksi halde .vg-route, içindeki position:fixed modal/toast/overlay'ler için
+   kalıcı bir containing-block oluşturup onları ekrana sabitlenmekten alıkoyar. */
+.vg-route {
+  width: 100%;
+  min-height: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  animation: vg-route-in 0.36s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* ── Hareketi azalt: erişilebilirlik ─────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .vg-route { animation: none; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ── Responsive yardımcılar ─────────────────────── */
+@media (max-width: 480px) {
+  :root {
+    font-size: 15px;
+  }
+
+  /* Küçük ekranlarda yatay padding sıkılaştır */
+  .vg-mobile-pad {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+}
+
+/* ── Prevent content from going under rounded corners on some Android ── */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ═══════════════════════════════════════════════════
+   PROFESYONEL ETKİLEŞİM KATMANI (uygulama geneli)
+   "Yağ gibi akan" geçişler + mikro-etkileşimler.
+   Inline stillere DOKUNMADAN tüm butonlarda tutarlı,
+   sade ve premium bir his sağlar.
+═══════════════════════════════════════════════════ */
+
+/* 1) Tüm butonlarda tek tip, yumuşak geçiş — transition-all 200ms ease-in-out.
+   !important: bileşenlerdeki dağınık inline 'transition' değerlerini
+   tek bir profesyonel standarda hizalar (renk/gölge/ölçek hepsi yumuşar). */
+button {
+  transition: all 200ms ease-in-out !important;
+}
+
+/* 2) Hover: ani renk sıçraması yerine yumuşak parlama.
+   Şeffaf/ghost butonlarda görünmez kalır, dolu butonlarda hafif canlanır. */
+button:not(:disabled):hover {
+  filter: brightness(1.07);
+}
+
+/* 3) Active (tıklama): hafif küçülme + geri gelme → mikro-etkileşim.
+   !important KULLANILMADI; böylece transform'la konumlanan (ör. translateY(-50%))
+   ikon butonlar bozulmaz — onlarda inline transform korunur. */
+button:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+/* Tıklanınca metin seçilip "yapışmasını" engelle (daha temiz his) */
+button {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Klavye odak halkası — tema aksanını izler (fallback neon yeşil) */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--vg-accent, #a3e635) 65%, transparent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+/* Form elemanlarında zaten özel focus stilleri var; çift halkayı engelle */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+/* Şık metin seçimi */
+::selection {
+  background: color-mix(in srgb, var(--vg-accent, #a3e635) 40%, transparent);
+  color: #18181b;
+}
+
+/* ── Sekme / içerik geçişi: yumuşak fade-in ───────────
+   Sekmeler arası geçişte içerik "şak" diye değil,
+   hafif opaklık + minik yukarı kayma ile gelir. */
+@keyframes vg-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.vg-fade {
+  animation: vg-fade-in 0.28s ease-in-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vg-fade { animation: none; }
+  button:not(:disabled):active { transform: none; }
+}
+
+/* ═══════════════════════════════════════════════════
+   SPLASH SCREEN — Karşılama ekranı animasyonları
+═══════════════════════════════════════════════════ */
+@keyframes vg-splash-pop {
+  0%   { opacity: 0; transform: scale(0.6) translateY(12px); }
+  60%  { opacity: 1; transform: scale(1.06) translateY(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes vg-splash-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes vg-splash-ring {
+  0%   { transform: scale(0.8); opacity: 0.7; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+@keyframes vg-splash-bar {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+@keyframes vg-neon-pulse {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(163,230,53,0.5)); }
+  50%      { filter: drop-shadow(0 0 18px rgba(163,230,53,0.9)); }
+}
+
+/* ── Toast bildirimi (şifre sıfırlama vb.) ──────────── */
+@keyframes vg-toast-in {
+  from { opacity: 0; transform: translate(-50%, -16px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
 }

@@ -32,8 +32,8 @@ function injectCyberpunkStyles() {
       100% { transform: rotate(360deg); }
     }
     @keyframes glow-pulse {
-      0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 136, 0.2), 0 0 40px rgba(0, 255, 136, 0.1); }
-      50% { box-shadow: 0 0 35px rgba(0, 255, 136, 0.45), 0 0 70px rgba(0, 255, 136, 0.2); }
+      0%, 100% { box-shadow: 0 0 20px rgba(163, 230, 53, 0.2), 0 0 40px rgba(163, 230, 53, 0.1); }
+      50% { box-shadow: 0 0 35px rgba(163, 230, 53, 0.45), 0 0 70px rgba(163, 230, 53, 0.2); }
     }
     @keyframes float-logo {
       0%, 100% { transform: translateY(0px) rotate(0deg); }
@@ -54,26 +54,22 @@ function injectCyberpunkStyles() {
       outline: none;
       border: 1px solid rgba(255, 255, 255, 0.08) !important;
       background: rgba(255, 255, 255, 0.04) !important;
-      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+      transition: all 0.2s ease-in-out !important;
     }
     .cyber-input:focus {
-      border-color: #00ff88 !important;
-      background: rgba(0, 255, 136, 0.03) !important;
-      box-shadow: 0 0 20px rgba(0, 255, 136, 0.25), inset 0 0 8px rgba(0, 255, 136, 0.1) !important;
+      border-color: #a3e635 !important;
+      background: rgba(163, 230, 53, 0.04) !important;
+      box-shadow: 0 0 0 3px rgba(163, 230, 53, 0.16) !important;
     }
     .cyber-input::placeholder {
       color: rgba(255, 255, 255, 0.25) !important;
     }
     
     /* Buttons */
-    .cyber-social-btn {
-      transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
-    }
     .cyber-social-btn:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.08) !important;
-      border-color: rgba(0, 255, 136, 0.4) !important;
-      box-shadow: 0 0 15px rgba(0, 255, 136, 0.15);
-      transform: translateY(-2px);
+      background: rgba(255, 255, 255, 0.05) !important;
+      border-color: rgba(163, 230, 53, 0.45) !important;
+      transform: translateY(-1px);
     }
     
     /* Custom Scrollbar for form just in case */
@@ -83,44 +79,25 @@ function injectCyberpunkStyles() {
 }
 
 /* ─────────────────────────────────────────────────
-   CYBERPUNK NEON DRIFTING AURA EFFECT
+   SUBTLE AMBIENT BACKGROUND
 ───────────────────────────────────────────────── */
 function NeonDriftingAura() {
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0, pointerEvents: 'none' }}>
-      {/* Glow Blob 1 (Top Right) */}
+      {/* Top right soft glow */}
       <div style={{
-        position: 'absolute', top: '-15%', right: '-10%',
-        width: 550, height: 550, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(0, 255, 136, 0.14) 0%, transparent 70%)',
+        position: 'absolute', top: '-10%', right: '-10%',
+        width: 500, height: 500, borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(163, 230, 53, 0.08) 0%, transparent 70%)',
+        filter: 'blur(60px)',
+      }} />
+
+      {/* Bottom left soft glow */}
+      <div style={{
+        position: 'absolute', bottom: '-15%', left: '-10%',
+        width: 500, height: 500, borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(132, 204, 22, 0.06) 0%, transparent 70%)',
         filter: 'blur(80px)',
-        animation: 'drift-fog-1 14s ease-in-out infinite',
-      }} />
-
-      {/* Glow Blob 2 (Bottom Left) */}
-      <div style={{
-        position: 'absolute', bottom: '-20%', left: '-15%',
-        width: 600, height: 600, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(0, 204, 106, 0.12) 0%, transparent 70%)',
-        filter: 'blur(90px)',
-        animation: 'drift-fog-2 18s ease-in-out infinite',
-      }} />
-
-      {/* Soft Center Horizon Ambient */}
-      <div style={{
-        position: 'absolute', top: '50%', left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: 700, height: 400, borderRadius: '50%',
-        background: 'radial-gradient(ellipse, rgba(0, 255, 136, 0.05) 0%, transparent 70%)',
-        filter: 'blur(100px)',
-      }} />
-
-      {/* Grid Pattern overlay to give that cyberpunk look */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        backgroundImage: 'linear-gradient(rgba(0, 255, 136, 0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 136, 0.015) 1px, transparent 1px)',
-        backgroundSize: '30px 30px',
-        opacity: 0.7,
       }} />
     </div>
   )
@@ -138,6 +115,14 @@ export default function AuthScreen({ onAuth }) {
   const [successMsg, setSuccessMsg]   = useState('')
   const [shake, setShake]             = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [toast, setToast]             = useState(null) // { type, text }
+
+  // Toast'u birkaç saniye sonra otomatik kapat
+  useEffect(() => {
+    if (!toast) return
+    const id = setTimeout(() => setToast(null), 5200)
+    return () => clearTimeout(id)
+  }, [toast])
 
   // Form Fields
   const [username, setUsername]       = useState('')
@@ -171,7 +156,11 @@ export default function AuthScreen({ onAuth }) {
     setSuccessMsg('')
     try {
       await sendPasswordReset(email)
-      setSuccessMsg('Şifre sıfırlama bağlantısı e-posta adresinize gönderilmiştir.')
+      setMode('login')
+      setToast({
+        type: 'success',
+        text: 'Şifre sıfırlama bağlantısı e-posta adresinize gönderildi. Gelen kutunuzu (ve spam klasörünü) kontrol edin.',
+      })
     } catch (err) {
       console.error('Password reset error:', err)
       triggerError(getAuthErrorMessage(err))
@@ -251,18 +240,55 @@ export default function AuthScreen({ onAuth }) {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      minHeight: '100dvh',
       width: '100%',
-      background: '#040406',
+      background: '#18181b',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       padding: '24px 16px',
+      paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))',
       position: 'relative',
-      fontFamily: "'Outfit', 'Inter', sans-serif",
+      fontFamily: "'Inter', sans-serif",
       overflow: 'hidden',
+      boxSizing: 'border-box',
     }}>
       <NeonDriftingAura />
+
+      {/* ── Şık Toast Bildirimi (şifre sıfırlama vb.) ── */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            top: 'calc(20px + env(safe-area-inset-top, 0px))',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 100000,
+            maxWidth: 'calc(100vw - 32px)',
+            width: 'max-content',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 10,
+            padding: '13px 18px',
+            borderRadius: 14,
+            background: 'rgba(24, 24, 27, 0.94)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: '1px solid rgba(163, 230, 53, 0.45)',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.5), 0 0 20px rgba(163, 230, 53, 0.22)',
+            color: '#fafafa',
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            animation: 'vg-toast-in 0.35s cubic-bezier(0.22,0.61,0.36,1) both',
+          }}
+        >
+          <span style={{ fontSize: 16, lineHeight: 1.3 }}>✅</span>
+          <span style={{ textAlign: 'left', lineHeight: 1.45 }}>{toast.text}</span>
+        </div>
+      )}
 
       {/* Content wrapper */}
       <div style={{
@@ -276,23 +302,18 @@ export default function AuthScreen({ onAuth }) {
         <div style={{ textAlign: 'center', marginBottom: 30 }}>
           <div style={{
             width: 76, height: 76, borderRadius: 22, margin: '0 auto 14px',
-            background: 'linear-gradient(135deg, #00ff88, #00b35e)',
+            background: 'linear-gradient(135deg, #a3e635, #84cc16)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 36,
             animation: 'float-logo 4s ease-in-out infinite',
-            boxShadow: '0 0 25px rgba(0, 255, 136, 0.4), 0 10px 30px rgba(0,0,0,0.5)',
+            boxShadow: '0 10px 28px rgba(0,0,0,0.45), 0 4px 14px rgba(163, 230, 53, 0.28)',
           }}>⚽</div>
           
           <h1 style={{
-            fontSize: 32, fontWeight: 900, color: '#fff',
-            letterSpacing: '-1px', margin: 0, lineHeight: 1,
+            fontSize: 30, fontWeight: 800, color: '#f1f5f9',
+            letterSpacing: '-0.8px', margin: 0, lineHeight: 1,
           }}>
-            Vibe<span style={{
-              background: 'linear-gradient(90deg, #00ff88, #00ffcc, #00ff88)',
-              backgroundSize: '200% auto',
-              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-              animation: 'shimmer 2.5s linear infinite',
-            }}>Goal</span>
+            Vibe<span style={{ color: '#a3e635' }}>Goal</span>
           </h1>
           <p style={{
             fontSize: 10, color: 'rgba(255, 255, 255, 0.35)',
@@ -304,20 +325,17 @@ export default function AuthScreen({ onAuth }) {
 
         {/* Cyberpunk Glass Box */}
         <div style={{
-          background: 'rgba(12, 12, 18, 0.45)',
-          backdropFilter: 'blur(30px)',
-          WebkitBackdropFilter: 'blur(30px)',
-          border: '1px solid rgba(0, 255, 136, 0.22)',
-          borderRadius: 24,
-          padding: '30px 24px',
-          boxShadow: '0 24px 80px rgba(0, 0, 0, 0.7), 0 0 40px rgba(0, 255, 136, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+          background: 'rgba(39, 39, 42, 0.82)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.07)',
+          borderRadius: 20,
+          padding: '28px 22px',
+          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
           animation: shake ? 'shake-container 0.5s ease both' : 'none',
           position: 'relative',
         }}>
           
-          {/* Neon accent corner cuts */}
-          <div style={{ position: 'absolute', top: 0, left: 16, right: 16, height: 1, background: 'linear-gradient(90deg, transparent, rgba(0, 255, 136, 0.3), transparent)' }} />
-          <div style={{ position: 'absolute', bottom: 0, left: 16, right: 16, height: 1, background: 'linear-gradient(90deg, transparent, rgba(0, 255, 136, 0.3), transparent)' }} />
 
           {/* Form Tabs */}
           {mode !== 'forgot' && (
@@ -328,8 +346,8 @@ export default function AuthScreen({ onAuth }) {
               borderRadius: 14, marginBottom: 24,
             }}>
               {[
-                { id: 'login',    label: '🔑 Giriş Yap' },
-                { id: 'register', label: '✨ Kayıt Ol' },
+                { id: 'login',    label: 'Giriş Yap' },
+                { id: 'register', label: 'Kayıt Ol' },
               ].map(tab => {
                 const active = mode === tab.id
                 return (
@@ -337,13 +355,13 @@ export default function AuthScreen({ onAuth }) {
                     key={tab.id}
                     onClick={() => switchMode(tab.id)}
                     style={{
-                      flex: 1, padding: '12px 8px', borderRadius: 10, border: 'none',
-                      background: active ? 'linear-gradient(135deg, rgba(0, 255, 136, 0.16), rgba(0, 255, 136, 0.08))' : 'transparent',
-                      color: active ? '#00ff88' : '#777',
-                      fontWeight: 700, fontSize: 13,
+                      flex: 1, padding: '10px 8px', borderRadius: 8, border: 'none',
+                      background: active ? 'rgba(163, 230, 53, 0.12)' : 'transparent',
+                      color: active ? '#bef264' : '#52525b',
+                      fontWeight: 600, fontSize: 13,
                       fontFamily: 'inherit',
-                      cursor: 'pointer', transition: 'all 0.2s ease',
-                      boxShadow: active ? 'inset 0 0 0 1px rgba(0, 255, 136, 0.2)' : 'none',
+                      cursor: 'pointer', transition: 'all 0.18s ease',
+                      boxShadow: active ? 'inset 0 0 0 1px rgba(163, 230, 53, 0.2)' : 'none',
                     }}
                   >{tab.label}</button>
                 )
@@ -391,9 +409,9 @@ export default function AuthScreen({ onAuth }) {
           {successMsg && (
             <div style={{
               padding: '12px 14px', borderRadius: 12,
-              background: 'rgba(0, 255, 136, 0.08)',
-              border: '1px solid rgba(0, 255, 136, 0.25)',
-              color: '#00ff88', fontSize: 13, fontWeight: 600,
+              background: 'rgba(163, 230, 53, 0.08)',
+              border: '1px solid rgba(163, 230, 53, 0.25)',
+              color: '#a3e635', fontSize: 13, fontWeight: 600,
               marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8,
             }}>
               <span>✅</span>
@@ -403,7 +421,7 @@ export default function AuthScreen({ onAuth }) {
 
           {/* Form Content */}
           {mode === 'forgot' ? (
-            <form onSubmit={handleForgotSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <form key="form-forgot" className="vg-fade" onSubmit={handleForgotSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* Email Field */}
               <div>
                 <label style={{ display: 'block', fontSize: 10, color: 'rgba(255, 255, 255, 0.45)', fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: 'uppercase', textAlign: 'left' }}>
@@ -431,14 +449,13 @@ export default function AuthScreen({ onAuth }) {
                 disabled={loading}
                 style={{
                   width: '100%', padding: '16px', borderRadius: 12,
-                  background: 'linear-gradient(135deg, #00ff88, #00b35e)',
-                  border: 'none', color: '#040406',
+                  background: '#a3e635',
+                  border: 'none', color: '#18181b',
                   fontWeight: 800, fontSize: 14,
                   fontFamily: 'inherit',
                   cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.8 : 1,
+                  opacity: loading ? 0.7 : 1,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                  animation: 'glow-pulse 2.5s ease-in-out infinite',
                   transition: 'all 0.2s ease',
                   marginTop: 6,
                 }}
@@ -463,7 +480,7 @@ export default function AuthScreen({ onAuth }) {
               </button>
             </form>
           ) : (
-            <form onSubmit={mode === 'login' ? handleLoginSubmit : handleRegisterSubmit}
+            <form key={`form-${mode}`} className="vg-fade" onSubmit={mode === 'login' ? handleLoginSubmit : handleRegisterSubmit}
                   style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
               {/* Username Field (Register Only) */}
@@ -546,7 +563,7 @@ export default function AuthScreen({ onAuth }) {
                       <div key={step} style={{
                         flex: 1, height: 3, borderRadius: 99,
                         background: password.length >= step * 2
-                          ? (step <= 2 ? '#ff4d4d' : step === 3 ? '#ffaa00' : '#00ff88')
+                          ? (step <= 2 ? '#ff4d4d' : step === 3 ? '#ffaa00' : '#a3e635')
                           : 'rgba(255,255,255,0.06)',
                         transition: 'background 0.3s ease',
                       }} />
@@ -561,25 +578,22 @@ export default function AuthScreen({ onAuth }) {
                 type="submit"
                 disabled={loading}
                 style={{
-                  width: '100%', padding: '16px', borderRadius: 12,
-                  background: 'linear-gradient(135deg, #00ff88, #00b35e)',
-                  border: 'none', color: '#040406',
-                  fontWeight: 800, fontSize: 14,
+                  width: '100%', padding: '14px', borderRadius: 10,
+                  background: '#a3e635',
+                  border: 'none', color: '#18181b',
+                  fontWeight: 700, fontSize: 14,
                   fontFamily: 'inherit',
                   cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.8 : 1,
+                  opacity: loading ? 0.7 : 1,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                  animation: 'glow-pulse 2.5s ease-in-out infinite',
-                  transition: 'all 0.2s ease',
-                  marginTop: 6,
+                  transition: 'opacity 0.2s ease, filter 0.2s ease',
+                  marginTop: 4,
                 }}
-                onMouseEnter={e => { if (!loading) e.currentTarget.style.transform = 'translateY(-1px) scale(1.01)' }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)' }}
               >
                 {loading ? (
                   <span style={{ animation: 'spin-slow 0.8s linear infinite', display: 'inline-block' }}>⚽</span>
                 ) : (
-                  mode === 'login' ? <><span>🚀</span> Sahaya Gir</> : <><span>✨</span> Arena Hesabı Aç</>
+                  mode === 'login' ? 'Giriş Yap' : 'Hesap Oluştur'
                 )}
               </button>
 
@@ -590,9 +604,9 @@ export default function AuthScreen({ onAuth }) {
                     type="button"
                     onClick={() => switchMode('forgot')}
                     style={{
-                      background: 'none', border: 'none', color: '#00ff88',
-                      fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                      padding: 0, textDecoration: 'underline'
+                      background: 'none', border: 'none', color: '#a3e635',
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                      padding: 0,
                     }}
                   >
                     Şifremi Unuttum?
@@ -622,8 +636,8 @@ export default function AuthScreen({ onAuth }) {
                   disabled={loading}
                   style={{
                     width: '100%', padding: '14px 16px', borderRadius: 12,
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px solid rgba(63,63,70,0.8)',
                     color: '#fff', fontSize: 13, fontWeight: 700,
                     fontFamily: 'inherit',
                     cursor: loading ? 'not-allowed' : 'pointer',
@@ -636,8 +650,8 @@ export default function AuthScreen({ onAuth }) {
                     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                   </svg>
-                  <span>Google ile Giriş Yap</span>
-                  <div style={{ marginLeft: 'auto', fontSize: 9, color: 'rgba(0, 255, 136, 0.45)', fontWeight: 800, letterSpacing: 0.5 }}>⚡ Hızlı</div>
+                  Google ile Devam Et
+                  <div style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(190, 242, 100, 0.6)', fontWeight: 700 }}>⚡</div>
                 </button>
 
                 {/* Apple */}
@@ -648,8 +662,8 @@ export default function AuthScreen({ onAuth }) {
                   disabled={loading}
                   style={{
                     width: '100%', padding: '14px 16px', borderRadius: 12,
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px solid rgba(63,63,70,0.8)',
                     color: '#fff', fontSize: 13, fontWeight: 700,
                     fontFamily: 'inherit',
                     cursor: loading ? 'not-allowed' : 'pointer',
@@ -659,8 +673,8 @@ export default function AuthScreen({ onAuth }) {
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="white" style={{ flexShrink: 0 }}>
                     <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
                   </svg>
-                  <span>Apple ile Giriş Yap</span>
-                  <div style={{ marginLeft: 'auto', fontSize: 9, color: 'rgba(0, 255, 136, 0.45)', fontWeight: 800, letterSpacing: 0.5 }}>⚡ Hızlı</div>
+                  Apple ile Devam Et
+                  <div style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(190, 242, 100, 0.6)', fontWeight: 700 }}>⚡</div>
                 </button>
               </div>
 
@@ -671,7 +685,7 @@ export default function AuthScreen({ onAuth }) {
                     <button
                       type="button"
                       onClick={() => switchMode('register')}
-                      style={{ background: 'none', border: 'none', color: '#00ff88', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
+                      style={{ background: 'none', border: 'none', color: '#bef264', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
                     >Kayıt Ol →</button>
                   </>
                 ) : (
@@ -679,7 +693,7 @@ export default function AuthScreen({ onAuth }) {
                     <button
                       type="button"
                       onClick={() => switchMode('login')}
-                      style={{ background: 'none', border: 'none', color: '#00ff88', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
+                      style={{ background: 'none', border: 'none', color: '#bef264', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
                     >Giriş Yap →</button>
                   </>
                 )}

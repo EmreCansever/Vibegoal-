@@ -67,7 +67,7 @@ export const authService = {
       email:    email.toLowerCase().trim(),
       password: hashPassword(password),
       createdAt: Date.now(),
-      avatar: '😎',
+      avatar: '',
     }
 
     users[uid] = user
@@ -113,7 +113,7 @@ export const authService = {
       uid:      firebaseUser.uid,
       username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Kullanıcı',
       email:    firebaseUser.email || '',
-      avatar:   firebaseUser.photoURL || '😎',
+      avatar:   firebaseUser.photoURL || '',
     }
 
     // Eğer daha önce kayıtlı değilse oluştur
@@ -182,7 +182,7 @@ export const dbService = {
       correct:     0,
       total:       0,
       badge:       '',
-      avatar:      '😎',
+      avatar:      '',
       rank:        1,
       createdAt:   Date.now(),
       updatedAt:   Date.now(),

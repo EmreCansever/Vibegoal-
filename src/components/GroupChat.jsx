@@ -58,7 +58,7 @@ function injectChatStyles() {
     .quick-reaction:hover { transform: scale(1.3) !important; }
     .send-btn:hover { filter: brightness(1.12); }
     .send-btn:active { animation: send-bounce 0.25s ease; }
-    .chat-input:focus { outline: none; border-color: rgba(0,255,136,0.5) !important; box-shadow: 0 0 0 3px rgba(0,255,136,0.1); }
+    .chat-input:focus { outline: none; border-color: color-mix(in srgb, var(--vg-accent) 50%, transparent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-accent) 10%, transparent); }
     .scroll-hide::-webkit-scrollbar { display: none; }
     .emoji-btn:hover { transform: scale(1.15); background: rgba(255,255,255,0.1) !important; }
   `
@@ -113,14 +113,14 @@ function SystemMessage({ msg }) {
     }}>
       <div style={{
         padding: '7px 16px', borderRadius: 99,
-        background: 'rgba(0,255,136,0.08)',
-        border: '1px solid rgba(0,255,136,0.18)',
-        fontSize: 11, color: '#00ff88aa', fontWeight: 600,
+        background: 'color-mix(in srgb, var(--vg-accent) 8%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--vg-accent) 18%, transparent)',
+        fontSize: 11, color: 'color-mix(in srgb, var(--vg-accent) 67%, transparent)', fontWeight: 600,
         textAlign: 'center', lineHeight: 1.5,
         maxWidth: '85%',
       }}>
         {msg.text}
-        <span style={{ marginLeft: 8, fontSize: 10, color: '#00ff8855' }}>{msg.time}</span>
+        <span style={{ marginLeft: 8, fontSize: 10, color: 'color-mix(in srgb, var(--vg-accent) 33%, transparent)' }}>{msg.time}</span>
       </div>
     </div>
   )
@@ -150,9 +150,9 @@ function ReactionBar({ reactions, activeReactions, onToggle, isMe }) {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
               padding: '3px 9px', borderRadius: 99,
-              background: isMine ? 'rgba(0,255,136,0.18)' : 'rgba(255,255,255,0.08)',
-              border: `1px solid ${isMine ? 'rgba(0,255,136,0.45)' : 'rgba(255,255,255,0.1)'}`,
-              color: isMine ? '#00ff88' : '#ddd',
+              background: isMine ? 'color-mix(in srgb, var(--vg-accent) 18%, transparent)' : 'rgba(255,255,255,0.08)',
+              border: `1px solid ${isMine ? 'color-mix(in srgb, var(--vg-accent) 45%, transparent)' : 'rgba(255,255,255,0.1)'}`,
+              color: isMine ? 'var(--vg-accent)' : '#ddd',
               fontSize: 12, cursor: 'pointer',
               fontFamily: 'Inter,sans-serif', fontWeight: 600,
               transition: 'all 0.15s ease',
@@ -160,7 +160,7 @@ function ReactionBar({ reactions, activeReactions, onToggle, isMe }) {
               transform: 'scale(1)',
             }}
           >
-            {emoji} <span style={{ fontSize: 10, color: isMine ? '#00ff8899' : '#aaa' }}>{count}</span>
+            {emoji} <span style={{ fontSize: 10, color: isMine ? 'color-mix(in srgb, var(--vg-accent) 60%, transparent)' : '#aaa' }}>{count}</span>
           </button>
         )
       })}
@@ -234,13 +234,13 @@ function ChatBubble({ msg, onReact, showAvatar }) {
               ? '18px 18px 4px 18px'
               : '18px 18px 18px 4px',
             background: isMe
-              ? 'linear-gradient(135deg,rgba(0,255,136,0.22),rgba(0,204,100,0.15))'
+              ? 'linear-gradient(135deg,color-mix(in srgb, var(--vg-accent) 22%, transparent),color-mix(in srgb, var(--vg-accent-alt) 15%, transparent))'
               : 'rgba(255,255,255,0.07)',
-            border: `1px solid ${isMe ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)'}`,
+            border: `1px solid ${isMe ? 'color-mix(in srgb, var(--vg-accent) 30%, transparent)' : 'rgba(255,255,255,0.08)'}`,
             cursor: 'default',
             position: 'relative',
             boxShadow: isMe
-              ? '0 2px 12px rgba(0,255,136,0.1)'
+              ? '0 2px 12px color-mix(in srgb, var(--vg-accent) 10%, transparent)'
               : '0 2px 8px rgba(0,0,0,0.3)',
           }}
         >
@@ -320,14 +320,14 @@ function DateDivider({ label }) {
 /* ─────────────────────────────────────────────────
    MAIN GROUP CHAT COMPONENT
 ───────────────────────────────────────────────── */
-export default function GroupChat({ roomName = 'Grup Sohbeti', onlineCount = 3, currentUser, userProfile }) {
+export default function GroupChat({ roomName = 'Grup Sohbeti', currentUser, userProfile, theme }) {
   useEffect(() => { injectChatStyles() }, [])
 
   const ME = {
     id: currentUser?.uid || 'me',
-    name: userProfile?.username || currentUser?.username || 'Sen (Ahmet)',
+    name: userProfile?.username || currentUser?.username || 'Sen',
     avatar: userProfile?.avatar || currentUser?.avatar || '😎',
-    color: '#00ff88'
+    color: 'var(--vg-accent)'
   }
 
   const [messages, setMessages]       = useState(INITIAL_MESSAGES)
@@ -463,19 +463,6 @@ export default function GroupChat({ roomName = 'Grup Sohbeti', onlineCount = 3, 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 16 }}>💬</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: '#e5e7eb' }}># {roomName.toLowerCase().replace(/ /g, '-')}</span>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            padding: '3px 10px', borderRadius: 99,
-            background: 'rgba(0,255,136,0.1)',
-            border: '1px solid rgba(0,255,136,0.2)',
-          }}>
-            <span style={{
-              width: 7, height: 7, borderRadius: '50%',
-              background: '#00ff88', display: 'inline-block',
-              boxShadow: '0 0 6px #00ff88',
-            }} />
-            <span style={{ fontSize: 10, color: '#00ff88', fontWeight: 700 }}>{onlineCount} çevrimiçi</span>
-          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, fontSize: 14, color: '#555' }}>
           <span title="Arama" style={{ cursor: 'pointer' }}>🔍</span>
@@ -522,9 +509,9 @@ export default function GroupChat({ roomName = 'Grup Sohbeti', onlineCount = 3, 
           style={{
             position: 'absolute', bottom: 90, left: '50%', transform: 'translateX(-50%)',
             padding: '7px 18px', borderRadius: 99,
-            background: 'rgba(0,255,136,0.2)',
-            border: '1px solid rgba(0,255,136,0.4)',
-            color: '#00ff88', fontSize: 12, fontWeight: 700,
+            background: 'color-mix(in srgb, var(--vg-accent) 20%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--vg-accent) 40%, transparent)',
+            color: 'var(--vg-accent)', fontSize: 12, fontWeight: 700,
             cursor: 'pointer', fontFamily: 'Inter,sans-serif',
             animation: 'unread-pulse 1.5s ease-in-out infinite',
             backdropFilter: 'blur(10px)',
@@ -569,10 +556,12 @@ export default function GroupChat({ roomName = 'Grup Sohbeti', onlineCount = 3, 
 
       {/* ── INPUT AREA ──────────────────────────── */}
       <div style={{
-        padding: '10px 14px 14px',
+        padding: '10px 14px',
+        paddingBottom: 'calc(14px + env(safe-area-inset-bottom, 0px))',
         background: 'rgba(255,255,255,0.03)',
         borderTop: '1px solid rgba(255,255,255,0.07)',
         flexShrink: 0,
+        boxSizing: 'border-box',
       }}>
         <div style={{
           display: 'flex', alignItems: 'flex-end', gap: 10,
@@ -589,13 +578,13 @@ export default function GroupChat({ roomName = 'Grup Sohbeti', onlineCount = 3, 
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
               fontSize: 20, padding: '8px 4px', flexShrink: 0,
-              color: showEmojiPad ? '#00ff88' : '#666',
+              color: showEmojiPad ? 'var(--vg-accent)' : '#666',
               transition: 'color 0.2s ease, transform 0.15s ease',
             }}
             title="Emoji ekle"
           >😊</button>
 
-          {/* Text input */}
+          {/* Text input — font-size 16px iOS zoom önleme için zorunlu */}
           <textarea
             ref={inputRef}
             className="chat-input"
@@ -606,7 +595,7 @@ export default function GroupChat({ roomName = 'Grup Sohbeti', onlineCount = 3, 
             rows={1}
             style={{
               flex: 1, background: 'none', border: 'none',
-              color: '#fff', fontSize: 13.5, fontFamily: 'Inter,sans-serif',
+              color: '#fff', fontSize: 16, fontFamily: 'Inter,sans-serif',
               resize: 'none', lineHeight: 1.5,
               padding: '8px 0',
               maxHeight: 100,
@@ -623,13 +612,13 @@ export default function GroupChat({ roomName = 'Grup Sohbeti', onlineCount = 3, 
             style={{
               width: 40, height: 40, borderRadius: 12, flexShrink: 0,
               background: input.trim()
-                ? 'linear-gradient(135deg,#00ff88,#00cc6a)'
+                ? 'linear-gradient(135deg,var(--vg-accent),var(--vg-accent-alt))'
                 : 'rgba(255,255,255,0.08)',
               border: 'none', cursor: input.trim() ? 'pointer' : 'default',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 18,
               transition: 'all 0.2s ease',
-              boxShadow: input.trim() ? '0 0 14px rgba(0,255,136,0.35)' : 'none',
+              boxShadow: input.trim() ? '0 0 14px color-mix(in srgb, var(--vg-accent) 35%, transparent)' : 'none',
             }}
           >
             {input.trim() ? '➤' : '✈️'}

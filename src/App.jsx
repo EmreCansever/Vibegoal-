@@ -1,75 +1,114 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import Dashboard from './components/Dashboard'
 import RoomScreen from './components/RoomScreen'
 import AuthScreen from './components/AuthScreen'
 import MatchDetail from './components/MatchDetail'
+import SplashScreen from './components/SplashScreen'
 import { authService } from './services/dataService'
 
 /* ═══════════════════════════════════════════════════════════════
-   3 TEMALİ MOTOR — Tüm inline-style'lar bu objeyi dinler.
-   Tema anahtarı: 'night' | 'hell' | 'retro'
+   2 TEMALİ MOTOR — Tüm inline-style'lar bu objeyi dinler.
+   Tema anahtarı: 'slate' | 'carbon'
 ═══════════════════════════════════════════════════════════════ */
 export const THEMES = {
-  night: {
-    id:        'night',
-    label:     '🌙 Derin Gece',
-    bg:        '#121212',
-    bgGrad:    'linear-gradient(135deg,#0a0a0f 0%,#0d1a12 50%,#0a0a0f 100%)',
-    accent:    '#00ff88',
-    accentAlt: '#00cc6a',
-    glow:      'rgba(0,255,136,0.35)',
-    glowSoft:  'rgba(0,255,136,0.12)',
-    neon:      'rgba(0,255,136,0.08)',
-    ticker:    'rgba(0,255,136,0.06)',
-    tickerB:   'rgba(0,255,136,0.12)',
-    liveBtn:   'linear-gradient(135deg,#ff1a1a,#cc0000)',
-    duelGlow:  'rgba(255,0,51,0.35)',
-    surface:   'rgba(255,255,255,0.04)',
-    border:    'rgba(255,255,255,0.09)',
-    tabActive: '#00ff88',
-    tabActiveText: '#121212',
-    pulseAnim: 'pulse-glow',
+  /**
+   * Zinc — Varsayılan tema (Neon Yeşil / Antrasit)
+   * Çok koyu asil antrasit zemin (zinc-900), kartlar zinc-800,
+   * canlı neon-lime (#a3e635) aksan. Modern, flat, "şık" çizgi.
+   */
+  slate: {
+    id:           'slate',
+    label:        'Neon Yeşil',
+    bg:           '#18181b',
+    bgGrad:       'linear-gradient(165deg,#18181b 0%,#1c1c20 100%)',
+    surface:      '#27272a',
+    surfaceHover: '#3f3f46',
+    accent:       '#a3e635',
+    accentAlt:    '#84cc16',
+    accentSoft:   'rgba(163,230,53,0.12)',
+    accentBorder: 'rgba(163,230,53,0.30)',
+    glow:         'rgba(163,230,53,0.28)',
+    glowSoft:     'rgba(163,230,53,0.10)',
+    neon:         'rgba(163,230,53,0.06)',
+    text:         '#fafafa',
+    textMuted:    '#a1a1aa',
+    textFaint:    '#52525b',
+    border:       'rgba(63,63,70,0.7)',
+    borderStrong: 'rgba(82,82,91,0.8)',
+    ticker:       'rgba(163,230,53,0.05)',
+    tickerB:      'rgba(163,230,53,0.10)',
+    liveBtn:      'linear-gradient(135deg,#ef4444,#dc2626)',
+    duelGlow:     'rgba(239,68,68,0.22)',
+    tabActive:    '#a3e635',
+    tabActiveText:'#18181b',
+    pulseAnim:    'none',
   },
-  hell: {
-    id:        'hell',
-    label:     '🔥 Cehennem Odası',
-    bg:        '#110808',
-    bgGrad:    'linear-gradient(135deg,#110808 0%,#1a0808 50%,#0e0505 100%)',
-    accent:    '#ff3300',
-    accentAlt: '#cc2200',
-    glow:      'rgba(255,51,0,0.45)',
-    glowSoft:  'rgba(255,51,0,0.15)',
-    neon:      'rgba(255,51,0,0.08)',
-    ticker:    'rgba(255,80,0,0.06)',
-    tickerB:   'rgba(255,80,0,0.14)',
-    liveBtn:   'linear-gradient(135deg,#ff6600,#cc3300)',
-    duelGlow:  'rgba(255,80,0,0.45)',
-    surface:   'rgba(255,80,0,0.04)',
-    border:    'rgba(255,80,0,0.12)',
-    tabActive: '#ff3300',
-    tabActiveText: '#fff',
-    pulseAnim: 'pulse-red',
+
+  /**
+   * Carbon — Neon Kırmızı tema
+   * Çok koyu nötr zemin, canlı neon kırmızı (#ff3b47) aksan.
+   * Agresif, "esports/gaming" enerjisi ama flat ve şık.
+   */
+  carbon: {
+    id:           'carbon',
+    label:        'Neon Kırmızı',
+    bg:           '#171416',
+    bgGrad:       'linear-gradient(165deg,#171416 0%,#1b1719 100%)',
+    surface:      '#241e20',
+    surfaceHover: '#2e2629',
+    accent:       '#ff3b47',
+    accentAlt:    '#e11d2e',
+    accentSoft:   'rgba(255,59,71,0.12)',
+    accentBorder: 'rgba(255,59,71,0.30)',
+    glow:         'rgba(255,59,71,0.28)',
+    glowSoft:     'rgba(255,59,71,0.10)',
+    neon:         'rgba(255,59,71,0.06)',
+    text:         '#faf1f2',
+    textMuted:    '#a89ca0',
+    textFaint:    '#564b4e',
+    border:       'rgba(68,60,63,0.7)',
+    borderStrong: 'rgba(92,80,84,0.8)',
+    ticker:       'rgba(255,59,71,0.05)',
+    tickerB:      'rgba(255,59,71,0.10)',
+    liveBtn:      'linear-gradient(135deg,#ff3b47,#e11d2e)',
+    duelGlow:     'rgba(255,59,71,0.24)',
+    tabActive:    '#ff3b47',
+    tabActiveText:'#ffffff',
+    pulseAnim:    'none',
   },
-  retro: {
-    id:        'retro',
-    label:     '🕹️ Retro Tribün',
-    bg:        '#0a080f',
-    bgGrad:    'linear-gradient(135deg,#0a080f 0%,#12081e 50%,#080a14 100%)',
-    accent:    '#c084fc',
-    accentAlt: '#a855f7',
-    glow:      'rgba(192,132,252,0.4)',
-    glowSoft:  'rgba(192,132,252,0.15)',
-    neon:      'rgba(192,132,252,0.08)',
-    ticker:    'rgba(96,165,250,0.06)',
-    tickerB:   'rgba(96,165,250,0.14)',
-    liveBtn:   'linear-gradient(135deg,#6d28d9,#4c1d95)',
-    duelGlow:  'rgba(192,132,252,0.4)',
-    surface:   'rgba(192,132,252,0.04)',
-    border:    'rgba(192,132,252,0.12)',
-    tabActive: '#c084fc',
-    tabActiveText: '#0a080f',
-    pulseAnim: 'pulse-purple',
+
+  /**
+   * Gray — Profesyonel Gri tema
+   * Antrasit zemin, mat asil gri-beyaz (gümüş) aksan, neon yok.
+   * Sade, kurumsal, "premium SaaS" çizgisi.
+   */
+  gray: {
+    id:           'gray',
+    label:        'Gri',
+    bg:           '#161618',
+    bgGrad:       'linear-gradient(165deg,#161618 0%,#1a1a1d 100%)',
+    surface:      '#242427',
+    surfaceHover: '#2e2e32',
+    accent:       '#d4d4d8',
+    accentAlt:    '#a1a1aa',
+    accentSoft:   'rgba(212,212,216,0.10)',
+    accentBorder: 'rgba(212,212,216,0.24)',
+    glow:         'rgba(212,212,216,0.14)',
+    glowSoft:     'rgba(212,212,216,0.06)',
+    neon:         'rgba(212,212,216,0.04)',
+    text:         '#fafafa',
+    textMuted:    '#9ca0a8',
+    textFaint:    '#52525b',
+    border:       'rgba(63,63,70,0.7)',
+    borderStrong: 'rgba(82,82,91,0.8)',
+    ticker:       'rgba(212,212,216,0.04)',
+    tickerB:      'rgba(212,212,216,0.08)',
+    liveBtn:      'linear-gradient(135deg,#ef4444,#dc2626)',
+    duelGlow:     'rgba(239,68,68,0.20)',
+    tabActive:    '#d4d4d8',
+    tabActiveText:'#18181b',
+    pulseAnim:    'none',
   },
 }
 
@@ -81,7 +120,7 @@ export function withGlowOpacity(glowSoft, opacity) {
 
 /* Tema değerini localStorage'a yaz/oku */
 function loadTheme() {
-  try { return localStorage.getItem('vg_theme') || 'night' } catch { return 'night' }
+  try { return localStorage.getItem('vg_theme') || 'slate' } catch { return 'slate' }
 }
 function saveTheme(id) {
   try { localStorage.setItem('vg_theme', id) } catch { /* ignore */ }
@@ -97,9 +136,26 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser())
   const [params, setParams]           = useState({})
   const [themeId, setThemeId]         = useState(loadTheme)
+  // Karşılama ekranı: yalnızca uygulama ilk açıldığında bir kez gösterilir
+  const [showSplash, setShowSplash]   = useState(true)
 
   const navigateHook = useNavigate()
-  const theme = THEMES[themeId] || THEMES.night
+  const location = useLocation()
+  const theme = THEMES[themeId] || THEMES.slate
+
+  // Global tema değişkenleri: her rotada (Dashboard mount olmasa da) güncel kalsın.
+  // Bileşenlerdeki color-mix(var(--vg-accent) ...) kullanımları buna bağlı.
+  useEffect(() => {
+    const r = document.documentElement
+    r.style.setProperty('--vg-accent', theme.accent)
+    r.style.setProperty('--vg-accent-alt', theme.accentAlt)
+    r.style.setProperty('--vg-glow', theme.glow)
+    r.style.setProperty('--vg-glow-soft', theme.glowSoft)
+    r.style.setProperty('--vg-bg', theme.bg)
+    r.style.setProperty('--vg-surface', theme.surface)
+    r.style.setProperty('--vg-tab-text', theme.tabActiveText)
+    document.body.style.background = theme.bg
+  }, [theme.id])
 
   useEffect(() => {
     // Database Cleanup: Purge any remnants of mock/test users from localStorage
@@ -107,7 +163,7 @@ export default function App() {
       const users = JSON.parse(localStorage.getItem('vg_users') || '{}')
       const updatedUsers = {}
       let changed = false
-      const fakes = ['test', 'cyber', 'analyst', 'appleuser', 'googleuser', 'şans', 'uid_178', 'vibegoal']
+      const fakes = ['test', 'cyber', 'analyst', 'appleuser', 'googleuser', 'şans', 'uid_178', 'vibegoal', 'demo', 'demouser', 'tematest']
 
       Object.keys(users).forEach(uid => {
         const u = users[uid]
@@ -245,8 +301,16 @@ export default function App() {
     saveTheme(next)
   }
 
+  // Rota başına geçiş animasyonu için "kök segment"i anahtar olarak kullan.
+  // (/match/123 → /match/456 gibi geçişlerde gereksiz remount yaşanmasın diye
+  //  yalnızca üst segmente göre yeniden tetiklenir.)
+  const routeKey = location.pathname.split('/')[1] || 'root'
+
   return (
-    <Routes>
+    <>
+    {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+    <div className="vg-route" key={routeKey}>
+    <Routes location={location}>
       <Route path="/auth" element={
         currentUser ? <Navigate to="/dashboard" replace /> : <AuthScreen onAuth={handleAuth} />
       } />
@@ -288,5 +352,7 @@ export default function App() {
       } />
       <Route path="*" element={<Navigate to={currentUser ? "/dashboard" : "/auth"} replace />} />
     </Routes>
+    </div>
+    </>
   )
 }

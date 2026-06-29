@@ -41,8 +41,8 @@ function injectRoomStyles() {
       to   { opacity: 1; transform: translateX(0); }
     }
     @keyframes pulse-glow {
-      0%,100% { box-shadow: 0 0 12px #00ff8844, 0 0 24px #00ff8822; }
-      50%      { box-shadow: 0 0 20px #00ff8888, 0 0 40px #00ff8844; }
+      0%,100% { box-shadow: 0 0 12px color-mix(in srgb, var(--vg-accent) 27%, transparent), 0 0 24px color-mix(in srgb, var(--vg-accent) 13%, transparent); }
+      50%      { box-shadow: 0 0 20px color-mix(in srgb, var(--vg-accent) 53%, transparent), 0 0 40px color-mix(in srgb, var(--vg-accent) 27%, transparent); }
     }
     @keyframes pulse-red {
       0%,100% { box-shadow: 0 0 12px #ff003344, 0 0 24px #ff003322; }
@@ -88,7 +88,7 @@ function injectRoomStyles() {
    SHARED UI ATOMS
 ───────────────────────────────────────────────── */
 
-function ProgressBar({ value, max, color = '#00ff88' }) {
+function ProgressBar({ value, max, color = 'var(--vg-accent)' }) {
   const pct = Math.min(100, Math.round((value / max) * 100))
   return (
     <div style={{
@@ -317,9 +317,9 @@ function PublicRoomCard({ room, idx, onRequestSent }) {
             onClick={handleRequest}
             style={{
               width: '100%', padding: '11px 0', borderRadius: 12,
-              border: sent ? '1px solid #00ff88' : `1px solid ${room.color}55`,
-              background: sent ? 'rgba(0,255,136,0.12)' : `${room.color}18`,
-              color: sent ? '#00ff88' : room.color,
+              border: sent ? '1px solid var(--vg-accent)' : `1px solid ${room.color}55`,
+              background: sent ? 'color-mix(in srgb, var(--vg-accent) 12%, transparent)' : `${room.color}18`,
+              color: sent ? 'var(--vg-accent)' : room.color,
               fontFamily: 'Inter,sans-serif',
               fontWeight: 700, fontSize: 13,
               cursor: sent ? 'default' : 'pointer',
@@ -341,7 +341,7 @@ function PublicRoomCard({ room, idx, onRequestSent }) {
 }
 
 function DiscoverTab({ theme, publicRooms = [], onJoinRoom }) {
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
   const [filter, setFilter] = useState('all')
   const leagues = [
     { id: 'all', label: 'Tümü' },
@@ -397,7 +397,7 @@ function DiscoverTab({ theme, publicRooms = [], onJoinRoom }) {
 ───────────────────────────────────────────────── */
 
 function Toggle({ value, onChange, theme }) {
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
   return (
     <button
       onClick={() => onChange(!value)}
@@ -422,7 +422,7 @@ function Toggle({ value, onChange, theme }) {
 }
 
 function CreateRoomModal({ onClose, onCreated, theme }) {
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
   const [name, setName]       = useState('')
   const [league, setLeague]   = useState('wc2026')
   const [isPublic, setPublic] = useState(false)
@@ -628,14 +628,14 @@ function buildRoomFromCode(rawCode) {
     myRank: 1,
     totalPoints: 0,
     avatar: '🔑',
-    color: '#60a5fa',
+    color: 'var(--vg-accent)',
     lastActivity: 'şimdi',
     isAdmin: false,
   }
 }
 
 function JoinByCode({ onJoined, theme }) {
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
   const [code, setCode]     = useState('')
   const [status, setStatus] = useState('idle') // idle | loading | success | error
   const inputRef = useRef(null)
@@ -675,8 +675,8 @@ function JoinByCode({ onJoined, theme }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <div style={{
             width: 36, height: 36, borderRadius: 10,
-            background: 'rgba(96,165,250,0.15)',
-            border: '1px solid rgba(96,165,250,0.3)',
+            background: 'color-mix(in srgb, var(--vg-accent) 15%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--vg-accent) 30%, transparent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 18,
           }}>🔑</div>
@@ -723,7 +723,7 @@ function JoinByCode({ onJoined, theme }) {
             style={{
               padding: '13px 18px', borderRadius: 12, border: 'none',
               background: code.trim()
-                ? 'linear-gradient(135deg,#60a5fa,#3b82f6)'
+                ? 'linear-gradient(135deg,var(--vg-accent-alt),var(--vg-accent))'
                 : 'rgba(255,255,255,0.07)',
               color: code.trim() ? '#fff' : '#555',
               fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 13,
@@ -797,7 +797,7 @@ function filterFakeRooms(rooms) {
 
 export default function RoomScreen({ onNavigate, theme, currentUser }) {
   useEffect(() => { injectRoomStyles() }, [])
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
 
   const [myRooms, setMyRooms]       = useState(() => {
     try {
@@ -889,29 +889,27 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
+    <div className="vg-app-shell" style={{
+      minHeight: '100dvh',
       background: t.bg,
       fontFamily: 'Inter, sans-serif',
       color: '#fff',
-      maxWidth: 600,
-      margin: '0 auto',
       position: 'relative',
-      paddingBottom: 40,
+      paddingBottom: 'calc(40px + env(safe-area-inset-bottom, 0px))',
       transition: 'background 0.4s ease',
       overflowX: 'hidden',
     }}>
-      {/* Ambient glows — tema rengine göre */}
+      {/* Ambient glows — container içinde */}
       <div style={{
-        position: 'fixed', top: '8%', right: '-20%',
-        width: 280, height: 280, borderRadius: '50%',
+        position: 'absolute', top: '8%', right: '-10%',
+        width: 240, height: 240, borderRadius: '50%',
         background: `radial-gradient(circle,${withGlowOpacity(t.glowSoft, 0.06)},transparent 70%)`,
         pointerEvents: 'none', zIndex: 0,
         transition: 'background 0.4s ease',
       }} />
       <div style={{
-        position: 'fixed', bottom: '30%', left: '-18%',
-        width: 300, height: 300, borderRadius: '50%',
+        position: 'absolute', bottom: '30%', left: '-10%',
+        width: 260, height: 260, borderRadius: '50%',
         background: `radial-gradient(circle,${withGlowOpacity(t.glowSoft, 0.04)},transparent 70%)`,
         pointerEvents: 'none', zIndex: 0,
         transition: 'background 0.4s ease',

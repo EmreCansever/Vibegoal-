@@ -7,6 +7,8 @@
        → https://rapidapi.com/api-sports/api/api-football
 ═══════════════════════════════════════════════════════════════ */
 
+import { translateTeamName } from '../utils/teamNamesTr'
+
 const BASE_URL = 'https://v3.football.api-sports.io'
 
 // In-memory cache to prevent exceeding the daily 100 requests limit
@@ -35,6 +37,15 @@ export const CURRENT_SEASON = 2024
    Temel fetch wrapper — headers + hata yönetimi
 ───────────────────────────────────────────────── */
 async function apiFetch(path, params = {}) {
+  // Load API Key from environment variable
+  const apiKey = import.meta.env.VITE_FOOTBALL_API_KEY || 'BURAYA_RAPIDAPI_KEY_YAZAR'
+
+  // Anahtar yoksa/placeholder ise: ağ isteği yapma, hata fırlatma.
+  // Boş yanıt döndür → çağıran katman sessizce fallback mock verilere düşer.
+  if (!apiKey || apiKey === 'BURAYA_RAPIDAPI_KEY_YAZAR') {
+    return { response: [] }
+  }
+
   const url = new URL(`${BASE_URL}${path}`)
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
 
@@ -44,9 +55,6 @@ async function apiFetch(path, params = {}) {
     return cached.data
   }
 
-  // Load API Key from environment variable
-  const apiKey = import.meta.env.VITE_FOOTBALL_API_KEY || 'BURAYA_RAPIDAPI_KEY_YAZAR'
-
   const res = await fetch(url.toString(), {
     method: 'GET',
     headers: {
@@ -55,16 +63,17 @@ async function apiFetch(path, params = {}) {
     },
   })
 
+  // HTTP hatası (401/403/429 vb.): fırlatma, sessizce boş dön → fallback mock.
   if (!res.ok) {
-    throw new Error(`API Hatası: ${res.status} ${res.statusText}`)
+    return { response: [] }
   }
 
   const json = await res.json()
 
-  // API bazen 200 döndürse de hata mesajı içerebilir
+  // API 200 dönse de errors içerebilir (geçersiz/aboneliksiz anahtar dahil).
+  // Konsolu kirletmeden sessizce boş dön → çağıran katman mock'a düşer.
   if (json.errors && Object.keys(json.errors).length > 0) {
-    const firstError = Object.values(json.errors)[0]
-    throw new Error(`API İçerik Hatası: ${firstError}`)
+    return { response: [] }
   }
 
   // Store in cache
@@ -88,8 +97,8 @@ function mapFixtureToMatch(fixture) {
 
   return {
     id:        fix.id,
-    home:      teams.home.name,
-    away:      teams.away.name,
+    home:      translateTeamName(teams.home.name),
+    away:      translateTeamName(teams.away.name),
     homeScore: goals.home ?? '-',
     awayScore: goals.away ?? '-',
     homeFlag:  FLAG_FALLBACK.home,   // gerçek projede teams.home.logo kullanılır

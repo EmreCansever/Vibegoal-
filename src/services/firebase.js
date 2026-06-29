@@ -1,5 +1,15 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider, OAuthProvider, sendPasswordResetEmail, deleteUser } from 'firebase/auth';
+import {
+  getAuth,
+  signInWithPopup,
+  GoogleAuthProvider,
+  OAuthProvider,
+  sendPasswordResetEmail,
+  deleteUser,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
+  EmailAuthProvider,
+} from 'firebase/auth';
 import { getFirestore, doc, deleteDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -12,8 +22,8 @@ const firebaseConfig = {
 };
 
 // Check if valid config exists (and isn't the placeholder string)
-const hasConfig = 
-  firebaseConfig.apiKey && 
+const hasConfig =
+  firebaseConfig.apiKey &&
   firebaseConfig.apiKey !== 'your_api_key_here' &&
   firebaseConfig.apiKey.trim() !== '';
 
@@ -73,16 +83,74 @@ export async function sendPasswordReset(email) {
 }
 
 /**
- * Deletes the active user record from Firebase Auth and deletes their Firestore document user record.
+ * Determines how the current Firebase user signed in.
+ * Returns 'google', 'apple', 'email', or 'unknown'.
+ * @returns {string}
+ */
+export function getSignInProvider() {
+  if (!auth?.currentUser) return 'unknown';
+  const providerData = auth.currentUser.providerData;
+  if (!providerData || providerData.length === 0) return 'unknown';
+  const providerId = providerData[0]?.providerId || '';
+  if (providerId === 'google.com') return 'google';
+  if (providerId === 'apple.com') return 'apple';
+  if (providerId === 'password') return 'email';
+  return 'unknown';
+}
+
+/**
+ * Re-authenticates the current user before a sensitive operation.
+ * - For email/password users: requires the current password.
+ * - For Google users: triggers a Google re-auth popup.
+ * - If Firebase is not configured (local-only mode), resolves silently.
+ *
+ * @param {string|null} password - Required only for email/password users.
  * @returns {Promise<void>}
  */
-export async function deleteCurrentUser() {
-  if (!auth || !auth.currentUser) {
-    throw new Error('Aktif kullanıcı oturumu bulunamadı.');
+export async function reauthenticateCurrentUser(password = null) {
+  // If Firebase is not active (local-only mode), skip re-auth silently
+  if (!auth || !auth.currentUser) return;
+
+  const provider = getSignInProvider();
+
+  if (provider === 'google') {
+    // Google: trigger popup-based re-auth
+    const googleProvider = new GoogleAuthProvider();
+    googleProvider.setCustomParameters({ prompt: 'select_account' });
+    await reauthenticateWithPopup(auth.currentUser, googleProvider);
+  } else if (provider === 'apple') {
+    const appleProvider = new OAuthProvider('apple.com');
+    await reauthenticateWithPopup(auth.currentUser, appleProvider);
+  } else if (provider === 'email') {
+    // Email/password: credential-based re-auth
+    if (!password) {
+      throw new Error('Kimliğinizi doğrulamak için mevcut şifrenizi girmeniz gerekmektedir.');
+    }
+    const email = auth.currentUser.email;
+    const credential = EmailAuthProvider.credential(email, password);
+    await reauthenticateWithCredential(auth.currentUser, credential);
   }
+  // For 'unknown' providers, skip silently (local-only users)
+}
+
+/**
+ * Deletes the active user record from Firebase Auth and deletes their Firestore document.
+ * Automatically performs re-authentication before deletion to satisfy Firebase's
+ * recent-login requirement (auth/requires-recent-login).
+ *
+ * @param {string|null} password - Password for email users. Google users get a popup.
+ * @returns {Promise<void>}
+ */
+export async function deleteCurrentUser(password = null) {
+  // Local-only mode: Firebase not configured, skip Firebase deletion
+  if (!auth || !auth.currentUser) return;
+
   const user = auth.currentUser;
 
-  // 1. Delete Firestore users/{uid} document if Firestore db is active
+  // 1. Re-authenticate first to satisfy Firebase's security requirement
+  await reauthenticateCurrentUser(password);
+
+  // 2. Delete Firestore users/{uid} document if Firestore db is active
   if (db) {
     try {
       await deleteDoc(doc(db, 'users', user.uid));
@@ -91,6 +159,6 @@ export async function deleteCurrentUser() {
     }
   }
 
-  // 2. Delete auth user record
+  // 3. Delete the Firebase Auth user record
   await deleteUser(user);
 }

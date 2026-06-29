@@ -120,7 +120,7 @@ export function computeDynamicBadge(stats) {
 ─────────────────────────────────────────────── */
 export function getPointTierMeta(tier) {
   const map = {
-    exact:  { color: '#00ff88', label: '⭐ Birebir Doğru!',  bg: 'rgba(0,255,136,0.12)' },
+    exact:  { color: '#a3e635', label: '⭐ Birebir Doğru!',  bg: 'rgba(163,230,53,0.12)' },
     result: { color: '#facc15', label: '✅ Sonuç Doğru',     bg: 'rgba(250,204,21,0.10)' },
     wrong:  { color: '#f43f5e', label: '❌ Tutmadı',          bg: 'rgba(244,63,94,0.10)' },
   }

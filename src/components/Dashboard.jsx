@@ -19,7 +19,7 @@ import {
   CURRENT_SEASON,
 } from '../services/footballApi'
 import { dbService, authService } from '../services/dataService'
-import { deleteCurrentUser } from '../services/firebase'
+import { deleteCurrentUser, getSignInProvider } from '../services/firebase'
 import { getAuthErrorMessage } from '../utils/authErrors'
 import {
   determinePollingInterval,
@@ -27,6 +27,18 @@ import {
   checkAndResolveAllQuestions,
   isMatchPoolLockedByRecentEvent,
 } from '../utils/questionEngine'
+
+function isPhotoAvatar(src) {
+  return src && (src.startsWith('http') || src.startsWith('data:image'))
+}
+
+function UserAvatarIcon({ size = 18, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
+    </svg>
+  )
+}
 
 const PREDICT_HISTORY_KEY = (uid) => `vg_predict_history_${uid}`
 
@@ -134,7 +146,7 @@ function getDynamicLeaderboard(currentUserId) {
           correct: 0,
           total: 0,
           badge: '',
-          avatar: u.avatar || '😎',
+          avatar: u.avatar || '',
         }
       }
       
@@ -145,7 +157,7 @@ function getDynamicLeaderboard(currentUserId) {
         correct: profile.correct || 0,
         total: profile.total || 0,
         badge: profile.badge || '',
-        avatar: profile.avatar || u.avatar || '😎',
+          avatar: profile.avatar || u.avatar || '',
         isMe: u.uid === currentUserId
       })
     })
@@ -169,7 +181,7 @@ const STYLE_TAG_ID = 'vg-keyframes'
 const STYLE_VAR_ID = 'vg-theme-vars'
 
 /* CSS değişkenlerini gerçek zamanlı güncelle — tema değişiminde çağrılır */
-export function updateThemeCSSVars(t) {
+function updateThemeCSSVars(t) {
   let el = document.getElementById(STYLE_VAR_ID)
   if (!el) {
     el = document.createElement('style')
@@ -194,11 +206,21 @@ function injectKeyframes() {
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #121212; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+    body { background: #18181b; font-family: 'Inter', sans-serif; overflow-x: hidden; }
 
-    @keyframes pulse-purple {
-      0%, 100% { box-shadow: 0 0 12px #c084fc44, 0 0 24px #c084fc22; }
-      50%       { box-shadow: 0 0 20px #c084fc88, 0 0 40px #c084fc44; }
+    /* ── Gerekli animasyonlar ── */
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fade-in {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes badge-pop {
+      0%   { transform: scale(0.85); opacity: 0; }
+      70%  { transform: scale(1.05); }
+      100% { transform: scale(1);    opacity: 1; }
     }
     @keyframes firework-pop {
       0%   { transform: scale(0) rotate(0deg); opacity: 1; }
@@ -215,75 +237,42 @@ function injectKeyframes() {
       60%       { transform: scale(0.95) translateY(0); }
     }
     @keyframes debt-shake {
-      0%,100% { transform: translateX(0) rotate(0); }
-      20%      { transform: translateX(-6px) rotate(-3deg); }
-      40%      { transform: translateX(6px) rotate(3deg); }
-      60%      { transform: translateX(-4px) rotate(-2deg); }
-      80%      { transform: translateX(4px) rotate(2deg); }
-    }
-    @keyframes pulse-glow {
-      0%, 100% { box-shadow: 0 0 12px #00ff8844, 0 0 24px #00ff8822; }
-      50%       { box-shadow: 0 0 20px #00ff8888, 0 0 40px #00ff8844; }
-    }
-    @keyframes pulse-red {
-      0%, 100% { box-shadow: 0 0 12px #ff003344, 0 0 24px #ff003322; }
-      50%       { box-shadow: 0 0 20px #ff003388, 0 0 40px #ff003344; }
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-6px); }
+      40%      { transform: translateX(6px); }
+      60%      { transform: translateX(-4px); }
+      80%      { transform: translateX(4px); }
     }
     @keyframes live-dot {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50%       { opacity: 0.4; transform: scale(1.4); }
-    }
-    @keyframes slide-in {
-      from { opacity: 0; transform: translateY(16px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes badge-pop {
-      0%   { transform: scale(0.8); opacity: 0; }
-      70%  { transform: scale(1.1); }
-      100% { transform: scale(1);   opacity: 1; }
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.35; }
     }
     @keyframes ticker {
       0%   { transform: translateX(0); }
       100% { transform: translateX(-50%); }
     }
-    @keyframes shimmer {
-      0%   { background-position: -200% center; }
-      100% { background-position:  200% center; }
-    }
     @keyframes skeleton-wave {
       0%   { background-position: -400px 0; }
       100% { background-position:  400px 0; }
     }
-    .skeleton-card {
-      background: linear-gradient(
-        90deg,
-        rgba(255,255,255,0.04) 25%,
-        rgba(255,255,255,0.09) 50%,
-        rgba(255,255,255,0.04) 75%
-      );
-      background-size: 400px 100%;
-      animation: skeleton-wave 1.4s ease-in-out infinite;
-      border-radius: 16px;
-    }
     @keyframes float {
       0%, 100% { transform: translateY(0px); }
-      50%       { transform: translateY(-6px); }
+      50%       { transform: translateY(-5px); }
     }
     @keyframes countdown-pulse {
-      0%, 100% { color: #ff4444; }
-      50%       { color: #ff8888; }
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.55; }
     }
     @keyframes pop-in {
-      0%   { opacity: 0; transform: translateY(60px) scale(0.94); }
-      65%  { transform: translateY(-6px) scale(1.02); }
+      0%   { opacity: 0; transform: translateY(40px) scale(0.96); }
       100% { opacity: 1; transform: translateY(0) scale(1); }
     }
     @keyframes pop-out {
       from { opacity: 1; transform: translateY(0) scale(1); }
-      to   { opacity: 0; transform: translateY(40px) scale(0.95); }
+      to   { opacity: 0; transform: translateY(30px) scale(0.96); }
     }
     @keyframes modal-in {
-      from { opacity: 0; transform: translateY(40px) scale(0.96); }
+      from { opacity: 0; transform: translateY(28px) scale(0.97); }
       to   { opacity: 1; transform: translateY(0) scale(1); }
     }
     @keyframes overlay-in {
@@ -294,17 +283,31 @@ function injectKeyframes() {
       from { transform: rotate(0deg); }
       to   { transform: rotate(360deg); }
     }
-    /* Tema-aware CSS class'ları — CSS değişkenlerini okur */
-    .live-card:hover { transform: translateY(-3px) scale(1.02) !important; }
-    .q-option:hover  { background: color-mix(in srgb, var(--vg-accent) 18%, transparent) !important; border-color: var(--vg-accent) !important; transform: scale(1.03); }
-    .q-option.selected { background: color-mix(in srgb, var(--vg-accent) 25%, transparent) !important; border-color: var(--vg-accent) !important; }
-    .q-option.red-option:hover { background: rgba(255,68,68,0.18) !important; border-color: #ff4444 !important; }
-    .copy-btn:hover  { background: color-mix(in srgb, var(--vg-accent) 25%, transparent) !important; transform: scale(1.04); }
-    .duel-btn:hover  { transform: scale(1.04); filter: brightness(1.15); }
-    .tab-btn:hover   { background: rgba(255,255,255,0.08) !important; }
-    .tab-btn.active  { background: var(--vg-accent) !important; color: var(--vg-tab-text) !important; }
+
+    /* ── Skeleton loading ── */
+    .skeleton-card {
+      background: linear-gradient(
+        90deg,
+        rgba(255,255,255,0.03) 25%,
+        rgba(255,255,255,0.07) 50%,
+        rgba(255,255,255,0.03) 75%
+      );
+      background-size: 400px 100%;
+      animation: skeleton-wave 1.6s ease-in-out infinite;
+      border-radius: 14px;
+    }
+
+    /* ── Tema-aware CSS class'ları ── */
+    .live-card:hover   { transform: translateY(-2px) !important; transition: transform 0.2s ease !important; }
+    .q-option:hover    { background: color-mix(in srgb, var(--vg-accent) 12%, transparent) !important; border-color: var(--vg-accent) !important; }
+    .q-option.selected { background: color-mix(in srgb, var(--vg-accent) 18%, transparent) !important; border-color: var(--vg-accent) !important; }
+    .q-option.red-option:hover { background: rgba(239,68,68,0.12) !important; border-color: rgba(239,68,68,0.5) !important; }
+    .copy-btn:hover    { background: color-mix(in srgb, var(--vg-accent) 16%, transparent) !important; }
+    .duel-btn:hover    { filter: brightness(1.1); }
+    .tab-btn:hover     { background: rgba(255,255,255,0.06) !important; }
+    .tab-btn.active    { background: var(--vg-accent) !important; color: var(--vg-tab-text) !important; }
     .scroll-hide::-webkit-scrollbar { display: none; }
-    .leader-row:hover { background: rgba(255,255,255,0.05) !important; }
+    .leader-row:hover  { background: rgba(255,255,255,0.04) !important; }
     .main-tab-btn.active { background: var(--vg-accent) !important; color: var(--vg-tab-text) !important; }
   `
   document.head.appendChild(style)
@@ -369,8 +372,8 @@ function MatchSkeletonCard() {
           </div>
           <div style={{
             width: 56, height: 38, borderRadius: 10,
-            background: 'rgba(0,255,136,0.06)',
-            border: '1px solid rgba(0,255,136,0.1)',
+            background: 'color-mix(in srgb, var(--vg-accent) 6%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--vg-accent) 10%, transparent)',
           }} />
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
             <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
@@ -388,168 +391,406 @@ function MatchSkeletonCard() {
 
 function Header({ league, setLeague, totalPoints, onNavigate, theme, onCycleTheme, currentUser, onLogout, hideLeagues, onLogoClick }) {
   const current = LEAGUES.find(l => l.id === league)
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
 
   return (
     <header style={{
-      padding: '14px 16px 0',
+      padding: '12px 16px 0',
       position: 'sticky', top: 0, zIndex: 100,
-      background: `linear-gradient(180deg,${t.bg} 70%,transparent)`,
+      background: t.bg,
+      borderBottom: `1px solid ${t.border}`,
+      boxShadow: '0 1px 16px rgba(0,0,0,0.28)',
     }}>
-      {/* Top row — mobilde flex-wrap ile taşmayı önle */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 6, flexWrap: 'wrap' }}>
+      {/* Top row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 6 }}>
         {/* Logo */}
-        <div 
+        <div
           onClick={onLogoClick}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', minWidth: 0 }}
         >
           <div style={{
-            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-            background: `linear-gradient(135deg,${t.accent},${t.accentAlt})`,
+            width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+            background: t.accent,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 18, animation: 'float 3s ease-in-out infinite',
-            boxShadow: `0 0 16px ${t.glowSoft}`,
+            fontSize: 16,
           }}>⚽</div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: '-0.5px', color: '#fff', lineHeight: 1.1 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.4px', color: t.text || '#f1f5f9', lineHeight: 1.1 }}>
               Vibe<span style={{ color: t.accent }}>Goal</span>
             </div>
-            <div style={{ fontSize: 8, color: '#555', letterSpacing: 1.5, textTransform: 'uppercase' }}>Live Prediction Arena</div>
+            <div style={{ fontSize: 9, color: t.textFaint || '#4a5568', letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: 500 }}>Live Prediction</div>
           </div>
         </div>
 
-        {/* Right-side action buttons — mobilde küçük boyut */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {/* Theme switcher icon */}
+        {/* Right-side actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          {/* Theme switcher — 3 tema: Neon Yeşil / Neon Kırmızı / Gri */}
           <button
             id="theme-switcher"
             onClick={onCycleTheme}
             title={`Tema: ${t.label}`}
+            aria-label={`Tema değiştir (${t.label})`}
             style={{
               flexShrink: 0,
-              width: 32, height: 32, borderRadius: 9,
-              background: t.glowSoft,
-              border: `1px solid ${t.accent}55`,
-              color: t.accent, fontSize: 14,
+              width: 34, height: 34, borderRadius: 9,
+              background: t.accentSoft || 'rgba(163,230,53,0.10)',
+              border: `1px solid ${t.accentBorder || 'rgba(163,230,53,0.2)'}`,
+              color: t.accent,
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'all 0.2s ease',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = withGlowOpacity(t.glowSoft, 0.22); e.currentTarget.style.transform = 'scale(1.1) rotate(30deg)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = t.glowSoft; e.currentTarget.style.transform = 'scale(1) rotate(0deg)' }}
           >
-            {t.id === 'night' ? '🌙' : t.id === 'hell' ? '🔥' : '🕹️'}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none" />
+            </svg>
           </button>
 
-          {/* Logout Button */}
-          <button
-            onClick={onLogout}
-            title="Çıkış Yap"
-            style={{
-              flexShrink: 0,
-              width: 32, height: 32, borderRadius: 9,
-              background: 'rgba(244, 63, 94, 0.1)',
-              border: '1px solid rgba(244, 63, 94, 0.35)',
-              color: '#f43f5e', fontSize: 14,
-              cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(244, 63, 94, 0.18)'; e.currentTarget.style.transform = 'scale(1.1)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(244, 63, 94, 0.1)'; e.currentTarget.style.transform = 'scale(1)' }}
-          >
-            🚪
-          </button>
-
-          {/* Rooms nav button — mobilde text-xs */}
+          {/* Rooms nav */}
           <button
             onClick={() => onNavigate && onNavigate('rooms')}
             title="Oda Yönetimi"
             style={{
               flexShrink: 0,
-              padding: '7px 10px', borderRadius: 10,
-              background: 'rgba(255,255,255,0.07)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              color: '#e5e7eb', fontSize: 11, fontWeight: 700,
+              height: 34, padding: '0 12px', borderRadius: 9,
+              background: t.surface || 'rgba(255,255,255,0.05)',
+              border: `1px solid ${t.border}`,
+              color: t.text || '#f1f5f9', fontSize: 12, fontWeight: 600,
               cursor: 'pointer', fontFamily: 'Inter,sans-serif',
-              transition: 'all 0.2s ease',
-              display: 'flex', alignItems: 'center', gap: 4,
+              display: 'flex', alignItems: 'center', gap: 6,
               whiteSpace: 'nowrap',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = `${t.glowSoft}`; e.currentTarget.style.borderColor = `${t.accent}55`; e.currentTarget.style.color = t.accent }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#e5e7eb' }}
           >
-            <span style={{ fontSize: 14 }}>🏠</span> Odalar
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            Odalar
           </button>
 
-          {/* Points badge — mobilde kompakt */}
+          {/* Points badge */}
           <div style={{
             flexShrink: 0,
-            padding: '5px 10px', borderRadius: 50,
-            background: t.glowSoft,
-            border: `1px solid ${t.accent}66`,
-            display: 'flex', alignItems: 'center', gap: 6,
+            height: 34, padding: '0 12px', borderRadius: 9,
+            background: t.accentSoft || 'rgba(163,230,53,0.10)',
+            border: `1px solid ${t.accentBorder || 'rgba(163,230,53,0.2)'}`,
+            display: 'flex', alignItems: 'center', gap: 7,
           }}>
-            <span style={{ fontSize: 14 }}>🏆</span>
-            <div>
-              <div style={{
-                fontSize: 14, fontWeight: 900, color: t.accent,
-                backgroundImage: `linear-gradient(90deg,${t.accent},${t.accentAlt},${t.accent})`,
-                backgroundSize: '200% auto',
-                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                animation: 'shimmer 2s linear infinite',
-                lineHeight: 1,
-              }}>{totalPoints.toLocaleString()}</div>
-              <div style={{ fontSize: 8, color: '#666', letterSpacing: 0.5 }}>PUAN</div>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={t.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+              <path d="M4 22h16" />
+              <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+              <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+              <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+            </svg>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: t.accent, lineHeight: 1 }}>{totalPoints.toLocaleString()}</span>
+              <span style={{ fontSize: 9, color: t.textMuted || '#8892a4', letterSpacing: 0.5, fontWeight: 700, textTransform: 'uppercase' }}>Puan</span>
             </div>
           </div>
+
+          {/* Logout */}
+          <button
+            onClick={onLogout}
+            title="Çıkış Yap"
+            aria-label="Çıkış Yap"
+            style={{
+              flexShrink: 0,
+              width: 34, height: 34, borderRadius: 9,
+              background: 'transparent',
+              border: `1px solid ${t.border}`,
+              color: t.textMuted || '#8892a4',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
         </div>
       </div>
 
-      {/* League tabs — mobilde scroll */}
+      {/* League tabs */}
       {!hideLeagues && (
-        <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: 4 }} className="scroll-hide">
-          <div style={{ display: 'inline-flex', gap: 6 }}>
+        <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: 10 }} className="scroll-hide">
+          <div style={{ display: 'inline-flex', gap: 4 }}>
             {LEAGUES.map(l => (
               <button
                 key={l.id}
                 className={`tab-btn${league === l.id ? ' active' : ''}`}
                 onClick={() => setLeague(l.id)}
                 style={{
-                  padding: '6px 12px', borderRadius: 50, border: 'none', cursor: 'pointer',
+                  padding: '5px 12px', borderRadius: 6, border: `1px solid transparent`, cursor: 'pointer',
                   fontSize: 11, fontWeight: 600, fontFamily: 'Inter,sans-serif',
-                  background: league === l.id ? t.accent : 'rgba(255,255,255,0.06)',
-                  color: league === l.id ? t.tabActiveText : '#aaa',
-                  transition: 'all 0.2s ease', whiteSpace: 'nowrap',
+                  background: league === l.id ? t.accent : 'transparent',
+                  color: league === l.id ? t.tabActiveText : t.textMuted || '#8892a4',
+                  transition: 'all 0.15s ease', whiteSpace: 'nowrap',
+                  borderColor: league === l.id ? t.accent : 'transparent',
                 }}
               >{l.label}</button>
             ))}
           </div>
         </div>
       )}
-
-      {/* Divider */}
-      <div style={{ height: 1, background: 'linear-gradient(90deg,transparent,#333,transparent)', margin: '10px 0 0' }} />
     </header>
   )
 }
 
+/* ─────────────────────────────────────────────────
+   YENİ ARAYÜZ BİLEŞENLERİ (mockup'a göre)
+───────────────────────────────────────────────── */
+
+/* Üst bar: profil ikonu (sol) · parlayan VIBEGOAL (orta) · tema + arama (sağ) */
+function TopBar({ theme, avatar, onProfile, onCycleTheme, showLeagues, onToggleSearch }) {
+  const t = theme || THEMES.slate
+  return (
+    <header style={{
+      padding: '14px 16px 12px',
+      position: 'sticky', top: 0, zIndex: 100,
+      background: t.bg,
+      borderBottom: `1px solid ${t.border}`,
+      boxShadow: '0 1px 16px rgba(0,0,0,0.28)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Profil */}
+        <div style={{ flex: '0 0 44px', display: 'flex', justifyContent: 'flex-start' }}>
+          <button
+            onClick={onProfile}
+            aria-label="Profil"
+            style={{
+              width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+              background: t.surface, border: `1px solid ${t.borderStrong || t.border}`,
+              color: t.text, cursor: 'pointer', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+            }}
+          >
+            {isPhotoAvatar(avatar)
+              ? <img src={avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <UserAvatarIcon size={18} color={t.textMuted} />
+            }
+          </button>
+        </div>
+
+        {/* Logo — parlayan VIBEGOAL */}
+        <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+          <span style={{
+            fontSize: 21, fontWeight: 900, letterSpacing: 2.5,
+            color: t.accent,
+            textShadow: `0 0 12px ${t.glow}, 0 0 26px ${t.glowSoft}`,
+            fontFamily: 'Inter,sans-serif',
+          }}>VIBEGOAL</span>
+        </div>
+
+        {/* Sağ aksiyonlar: tema + arama */}
+        <div style={{ flex: '0 0 88px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={onCycleTheme}
+            title={`Tema: ${t.label}`}
+            aria-label="Tema değiştir"
+            style={{
+              width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+              background: t.accentSoft, border: `1px solid ${t.accentBorder}`,
+              color: t.accent, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+          <button
+            onClick={onToggleSearch}
+            aria-label="Lig filtresi"
+            style={{
+              width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+              background: showLeagues ? t.accentSoft : t.surface,
+              border: `1px solid ${showLeagues ? t.accentBorder : t.border}`,
+              color: showLeagues ? t.accent : t.textMuted, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+/* Bölüm başlığı — neon yeşil alt çizgi vurgusuyla */
+function SectionTitle({ children, theme, action }) {
+  const t = theme || THEMES.slate
+  return (
+    <div style={{ padding: '0 20px', marginBottom: 12, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', letterSpacing: 0.6, textTransform: 'uppercase' }}>{children}</div>
+        <div style={{ width: 52, height: 3, borderRadius: 3, marginTop: 6, background: t.accent, boxShadow: `0 0 10px ${t.glow}` }} />
+      </div>
+      {action}
+    </div>
+  )
+}
+
+/* Öne çıkan canlı maç kartı */
+function FeaturedMatch({ match, theme, onClick }) {
+  const t = theme || THEMES.slate
+  if (!match) {
+    return (
+      <div style={{
+        margin: '16px 16px 0', padding: '30px 20px', borderRadius: 20,
+        background: t.surface, border: `1px solid ${t.border}`, textAlign: 'center',
+      }}>
+        <div style={{ fontSize: 30, marginBottom: 8 }}>🏟️</div>
+        <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Şu anda canlı maç yok</div>
+        <div style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>Yeni maçların başlamasını bekleyin</div>
+      </div>
+    )
+  }
+  return (
+    <div onClick={onClick} style={{
+      margin: '16px 16px 0', padding: '16px', borderRadius: 20,
+      background: t.surface, border: `1px solid ${t.border}`,
+      cursor: 'pointer', position: 'relative', overflow: 'hidden',
+      animation: 'slide-in 0.3s ease both',
+    }}>
+      <div style={{ position: 'absolute', top: -40, right: -40, width: 130, height: 130, borderRadius: '50%', background: `radial-gradient(circle,${t.glowSoft},transparent 70%)`, pointerEvents: 'none' }} />
+
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '4px 14px', borderRadius: 99,
+          background: t.accent, color: t.tabActiveText,
+          fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
+          boxShadow: `0 0 14px ${t.glow}`,
+        }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: t.tabActiveText, opacity: 0.9 }} />
+          CANLI · {match.minute}'
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+          <div style={{ fontSize: 38, lineHeight: 1, marginBottom: 8 }}>{match.homeFlag}</div>
+          <div style={{ fontSize: 13, color: '#fff', fontWeight: 700, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis' }}>{match.home}</div>
+        </div>
+        <div style={{
+          flexShrink: 0, padding: '10px 16px', borderRadius: 14,
+          background: t.bg, border: `1px solid ${t.border}`,
+          minWidth: 92, textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 28, fontWeight: 900, color: '#fff', lineHeight: 1 }}>
+            {match.homeScore} <span style={{ color: t.textFaint || '#555', fontSize: 20 }}>:</span> {match.awayScore}
+          </div>
+        </div>
+        <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+          <div style={{ fontSize: 38, lineHeight: 1, marginBottom: 8 }}>{match.awayFlag}</div>
+          <div style={{ fontSize: 13, color: '#fff', fontWeight: 700, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis' }}>{match.away}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* Günün maçları — tek satır maç */
+function MatchRow({ match, theme, onClick, delay = 0 }) {
+  const t = theme || THEMES.slate
+  return (
+    <div onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '12px 14px', borderRadius: 14,
+      background: t.surface, border: `1px solid ${t.border}`,
+      cursor: 'pointer', animation: `slide-in ${0.15 + delay}s ease both`,
+    }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <span style={{ fontSize: 20, flexShrink: 0 }}>{match.homeFlag}</span>
+        <span style={{ fontSize: 13, color: '#fff', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{match.home}</span>
+      </div>
+      <div style={{ flexShrink: 0, textAlign: 'center', minWidth: 58 }}>
+        <div style={{ fontSize: 9, fontWeight: 800, color: t.accent, letterSpacing: 0.5 }}>CANLI</div>
+        <div style={{ fontSize: 14, fontWeight: 900, color: '#fff', lineHeight: 1.2 }}>{match.homeScore} : {match.awayScore}</div>
+      </div>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, minWidth: 0 }}>
+        <span style={{ fontSize: 13, color: '#fff', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{match.away}</span>
+        <span style={{ fontSize: 20, flexShrink: 0 }}>{match.awayFlag}</span>
+      </div>
+    </div>
+  )
+}
+
+/* Alt navigasyon: Ana Sayfa · Gruplar · Oyunlar · Profil */
+function BottomNav({ theme, active, onHome, onGroups, onGames, onProfile }) {
+  const t = theme || THEMES.slate
+  const items = [
+    { id: 'home',    label: 'Ana Sayfa', onClick: onHome,
+      icon: <><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></> },
+    { id: 'groups',  label: 'Gruplar', onClick: onGroups,
+      icon: <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></> },
+    { id: 'games',   label: 'Oyunlar', onClick: onGames,
+      icon: <><rect x="2" y="6" width="20" height="12" rx="2" /><line x1="6" y1="12" x2="10" y2="12" /><line x1="8" y1="10" x2="8" y2="14" /><circle cx="17" cy="10" r="1" fill="currentColor" /><circle cx="15" cy="14" r="1" fill="currentColor" /></> },
+    { id: 'profile', label: 'Profil', onClick: onProfile,
+      icon: <><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" /></> },
+  ]
+  return (
+    <nav className="vg-bottom-nav" style={{
+      position: 'fixed', bottom: 0, zIndex: 200,
+      background: t.bg,
+      borderTop: `1px solid ${t.border}`,
+      boxShadow: '0 -4px 24px rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'stretch',
+      padding: '8px 6px',
+      paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
+      boxSizing: 'border-box',
+    }}>
+      {items.map(it => {
+        const on = active === it.id
+        return (
+          <button
+            key={it.id}
+            onClick={it.onClick}
+            style={{
+              flex: 1, background: 'transparent', border: 'none', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              padding: '4px 2px', color: on ? t.accent : t.textMuted,
+              fontFamily: 'Inter,sans-serif',
+            }}
+          >
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {it.icon}
+            </svg>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.2 }}>{it.label}</span>
+          </button>
+        )
+      })}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingLeft: 4, paddingRight: 2 }}>
+        <span style={{ fontSize: 16, color: t.accent, opacity: 0.85, filter: `drop-shadow(0 0 6px ${t.glow})` }}>✦</span>
+      </div>
+    </nav>
+  )
+}
+
 function LiveMatchCard({ match, prediction, theme }) {
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
   return (
     <div className="live-card" style={{
-      background: 'linear-gradient(135deg,rgba(30,30,40,0.95),rgba(20,20,30,0.95))',
+      background: t.surface || '#1e2130',
       border: `1px solid ${t.border}`,
-      borderRadius: 16,
+      borderRadius: 14,
       padding: '14px 16px',
       minWidth: 200,
       flexShrink: 0,
       cursor: 'pointer',
-      transition: 'transform 0.25s ease, box-shadow 0.25s ease',
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+      transition: 'transform 0.2s ease',
       position: 'relative',
       overflow: 'hidden',
-      animation: 'slide-in 0.4s ease both',
+      animation: 'slide-in 0.3s ease both',
     }}>
       {/* glow accent */}
       <div style={{
@@ -618,7 +859,7 @@ function LiveMatchCard({ match, prediction, theme }) {
 }
 
 function LiveFeed({ matches, predictions = {}, loading, error, onRetry, theme, onMatchClick }) {
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
   /* ── Loading: 3 skeleton kart göster ─── */
   if (loading) {
     return (
@@ -714,7 +955,7 @@ function LiveFeed({ matches, predictions = {}, loading, error, onRetry, theme, o
 }
 
 function QuestionPanel({ questions, answers, setAnswers, theme }) {
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
   const [activeIdx, setActiveIdx] = useState(0)
   const q = questions[activeIdx]
 
@@ -854,7 +1095,7 @@ function BadgeChip({ badge }) {
 
 
 function BottomActions({ copied, setCopied, onDuel, theme }) {
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
   const [duelPulse, setDuelPulse] = useState(false)
 
   function shareRoom(roomId = 'vibegoal-grup-abc123') {
@@ -885,41 +1126,30 @@ function BottomActions({ copied, setCopied, onDuel, theme }) {
   return (
     <div style={{
       position: 'fixed', bottom: 0, left: 0, right: 0,
-      padding: '16px 20px',
+      padding: '12px 16px',
+      paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
       background: `linear-gradient(0deg,${t.bg} 60%,transparent)`,
-      display: 'flex', gap: 12, zIndex: 200,
+      display: 'flex', gap: 10, zIndex: 200,
       maxWidth: 600, margin: '0 auto',
+      boxSizing: 'border-box',
     }}>
       {/* Copy link */}
       <button
         className="copy-btn"
         onClick={() => shareRoom()}
         style={{
-          flex: 1, padding: '15px 20px', borderRadius: 16,
-          background: copied
-            ? `linear-gradient(135deg,${t.accent}40,${t.accentAlt}33)`
-            : 'rgba(255,255,255,0.07)',
-          border: `1px solid ${copied ? t.accent : 'rgba(255,255,255,0.12)'}`,
-          color: copied ? t.accent : '#e5e7eb',
+          flex: 1, padding: '14px 16px', borderRadius: 12,
+          background: copied ? t.accentSoft || 'rgba(163,230,53,0.12)' : t.surface || 'rgba(255,255,255,0.05)',
+          border: `1px solid ${copied ? t.accent : t.border}`,
+          color: copied ? t.accent : t.textMuted || '#8892a4',
           fontFamily: 'Inter,sans-serif',
-          fontWeight: 700, fontSize: 13,
-          cursor: 'pointer', transition: 'all 0.25s ease',
+          fontWeight: 600, fontSize: 13,
+          cursor: 'pointer', transition: 'all 0.2s ease',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          boxShadow: copied ? `0 0 20px ${t.glow}, 0 0 40px ${t.glowSoft}` : 'none',
         }}
       >
-        <span style={{ fontSize: 18 }}>{copied ? '✅' : '🔗'}</span>
-        <span style={{
-          backgroundImage: copied
-            ? `linear-gradient(90deg,${t.accent},${t.accentAlt},${t.accent})`
-            : 'none',
-          backgroundSize: '200% auto',
-          WebkitBackgroundClip: copied ? 'text' : undefined,
-          WebkitTextFillColor: copied ? 'transparent' : undefined,
-          animation: copied ? 'shimmer 1.5s linear infinite' : 'none',
-        }}>
-          {copied ? 'Link Kopyalandı! 🚀' : 'Grup Linki Kopyala'}
-        </span>
+        <span style={{ fontSize: 16 }}>{copied ? '✅' : '🔗'}</span>
+        <span>{copied ? 'Link Kopyalandı!' : 'Grup Linki Kopyala'}</span>
       </button>
 
       {/* Duel */}
@@ -927,22 +1157,18 @@ function BottomActions({ copied, setCopied, onDuel, theme }) {
         className="duel-btn"
         onClick={handleDuel}
         style={{
-          flex: 1, padding: '15px 20px', borderRadius: 16,
-          background: duelPulse
-            ? 'linear-gradient(135deg,#ff6666,#ff0033)'
-            : t.liveBtn,
-          border: `1px solid ${t.duelGlow}`,
+          flex: 1, padding: '14px 16px', borderRadius: 12,
+          background: t.liveBtn,
+          border: `1px solid rgba(239,68,68,0.3)`,
           color: '#fff',
           fontFamily: 'Inter,sans-serif',
-          fontWeight: 800, fontSize: 13,
-          cursor: 'pointer', transition: 'all 0.25s ease',
+          fontWeight: 700, fontSize: 13,
+          cursor: 'pointer', transition: 'filter 0.2s ease',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          animation: 'pulse-red 2.5s ease-in-out infinite',
-          boxShadow: `0 4px 24px ${t.duelGlow}`,
         }}
       >
-        <span style={{ fontSize: 18 }}>⚔️</span>
-        Birebir Düello Başlat
+        <span style={{ fontSize: 16 }}>⚔️</span>
+        Düello Başlat
       </button>
     </div>
   )
@@ -963,7 +1189,7 @@ const DUEL_MATCHES = [
   { id: 'dm7', label: 'Bayern Münih vs Dortmund',   league: '🇩🇪 Bundesliga' },
 ]
 
-function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, theme }) {
+function DuelScreen({ onClose, leaderboard = [], totalPoints = 0, onWin, theme, meName = 'Sen', meAvatar = '' }) {
   const [phase, setPhase]         = useState('setup')   // setup | confirmed | result
   const [opponent, setOpponent]   = useState(null)
   const [penalty, setPenalty]     = useState('')
@@ -972,7 +1198,7 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
   const [winnerIsMe, setWinnerIsMe] = useState(null)
   const [duelStatus, setDuelStatus] = useState('waiting') // 'waiting' | 'live' | 'done'
   const duelTimerRef = useRef(null)
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
 
   const opponents = leaderboard.filter(p => !p.isMe)
 
@@ -1262,7 +1488,7 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
                 <div style={{
                   position: 'absolute', top: -30, left: -30,
                   width: 120, height: 120, borderRadius: '50%',
-                  background: 'radial-gradient(circle,rgba(0,255,136,0.15),transparent)',
+                  background: 'radial-gradient(circle,rgba(163,230,53,0.15),transparent)',
                   pointerEvents: 'none',
                 }} />
                 <div style={{
@@ -1278,14 +1504,14 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
                   <div style={{ flex: 1, textAlign: 'center' }}>
                     <div style={{
                       width: 64, height: 64, borderRadius: 18, margin: '0 auto 10px',
-                      background: 'rgba(0,255,136,0.15)',
-                      border: '2px solid rgba(0,255,136,0.4)',
+                      background: 'rgba(163,230,53,0.15)',
+                      border: '2px solid rgba(163,230,53,0.4)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 30,
-                      boxShadow: '0 0 20px rgba(0,255,136,0.25)',
+                      boxShadow: '0 0 20px rgba(163,230,53,0.25)',
                       animation: 'float 3s ease-in-out infinite',
-                    }}>😎</div>
-                    <div style={{ fontWeight: 800, fontSize: 14, color: '#00ff88' }}>Sen (Ahmet)</div>
+                    }}>{isPhotoAvatar(meAvatar) ? <img src={meAvatar} alt="" style={{ width: '100%', height: '100%', borderRadius: 18, objectFit: 'cover' }} /> : <UserAvatarIcon size={28} color="#a3e635" />}</div>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: '#a3e635' }}>{meName}</div>
                     <div style={{ fontSize: 11, color: '#555', marginTop: 3 }}>
                       {totalPoints.toLocaleString()} puan
                     </div>
@@ -1424,11 +1650,11 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
                 padding: '28px 20px',
                 borderRadius: 20,
                 background: winnerIsMe
-                  ? 'linear-gradient(135deg,rgba(0,255,136,0.12),rgba(0,204,100,0.08))'
+                  ? 'linear-gradient(135deg,rgba(163,230,53,0.12),rgba(132,204,22,0.08))'
                   : 'linear-gradient(135deg,rgba(255,30,30,0.12),rgba(180,0,0,0.08))',
-                border: `1px solid ${winnerIsMe ? 'rgba(0,255,136,0.3)' : 'rgba(255,30,30,0.3)'}`,
+                border: `1px solid ${winnerIsMe ? 'rgba(163,230,53,0.3)' : 'rgba(255,30,30,0.3)'}`,
                 boxShadow: winnerIsMe
-                  ? '0 0 40px rgba(0,255,136,0.15)'
+                  ? '0 0 40px rgba(163,230,53,0.15)'
                   : '0 0 40px rgba(255,0,51,0.15)',
                 marginBottom: 20,
                 position: 'relative',
@@ -1441,7 +1667,7 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
                 </div>
                 <div style={{
                   fontSize: 22, fontWeight: 900,
-                  color: winnerIsMe ? '#00ff88' : '#ff4444',
+                  color: winnerIsMe ? '#a3e635' : '#ff4444',
                   marginBottom: 8, letterSpacing: '-0.5px',
                 }}>
                   {winnerIsMe ? '🏆 DÜELLO KAZANILDI!' : '😤 Borcunu Öde!'}
@@ -1459,7 +1685,7 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
                   background: 'rgba(255,255,255,0.04)',
                   border: '1px solid rgba(255,255,255,0.08)',
                 }}>
-                  <div style={{ fontSize: 11, color: winnerIsMe ? '#00ff88' : '#ff6666', fontWeight: 700 }}>
+                  <div style={{ fontSize: 11, color: winnerIsMe ? '#a3e635' : '#ff6666', fontWeight: 700 }}>
                     {winnerIsMe ? `🍖 ${opp.name} şimdi borçlu!` : '🍖 Senin ödemen gerekiyor!'}
                   </div>
                   <div style={{ fontSize: 12, color: '#aaa', marginTop: 4, fontStyle: 'italic' }}>
@@ -1471,12 +1697,12 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
                 {winnerIsMe && (
                   <div style={{
                     marginTop: 14, padding: '8px 16px', borderRadius: 10,
-                    background: 'rgba(0,255,136,0.1)',
-                    border: '1px solid rgba(0,255,136,0.2)',
+                    background: 'rgba(163,230,53,0.1)',
+                    border: '1px solid rgba(163,230,53,0.2)',
                     display: 'inline-flex', alignItems: 'center', gap: 8,
                   }}>
                     <span style={{ fontSize: 18 }}>🏆</span>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: '#00ff88' }}>+50 Düello Puanı</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: '#a3e635' }}>+50 Düello Puanı</span>
                   </div>
                 )}
               </div>
@@ -1502,7 +1728,7 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
                       userProfile?.avatar || '😎'
                     )}
                   </div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: winnerIsMe ? '#00ff88' : '#888', marginTop: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: winnerIsMe ? '#a3e635' : '#888', marginTop: 4 }}>
                     Sen {winnerIsMe ? '👑' : ''}
                   </div>
                 </div>
@@ -1542,9 +1768,9 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
                   onClick={onClose}
                   style={{
                     flex: 1, padding: '13px', borderRadius: 14,
-                    background: 'rgba(0,255,136,0.12)',
-                    border: '1px solid rgba(0,255,136,0.3)',
-                    color: '#00ff88', fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 13,
+                    background: t.accentSoft,
+                    border: `1px solid ${t.accentBorder}`,
+                    color: t.accent, fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 13,
                     cursor: 'pointer',
                   }}
                 >✅ Tamam</button>
@@ -1559,7 +1785,7 @@ function DuelScreen({ onClose, leaderboard = [], totalPoints = 1320, onWin, them
 }
 
 function StatsTicker({ theme }) {
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
   const stats = [
     '🌍 2026 Dünya Kupası · 48 Takım',
     '⚡ 2.347 aktif tahmin şu an',
@@ -1642,8 +1868,8 @@ function LiveQuestionPopup({ question, onAnswer, onClose }) {
         background: 'linear-gradient(135deg,rgba(18,18,30,0.97),rgba(10,10,20,0.97))',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
-        border: '1px solid rgba(0,255,136,0.22)',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(0,255,136,0.08)',
+        border: '1px solid rgba(163,230,53,0.22)',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(163,230,53,0.08)',
         overflow: 'hidden',
         position: 'relative',
       }}>
@@ -1651,7 +1877,7 @@ function LiveQuestionPopup({ question, onAnswer, onClose }) {
         <div style={{
           position: 'absolute', top: -40, right: -40,
           width: 140, height: 140, borderRadius: '50%',
-          background: 'radial-gradient(circle,rgba(0,255,136,0.14),transparent)',
+          background: 'radial-gradient(circle,rgba(163,230,53,0.14),transparent)',
           pointerEvents: 'none',
         }} />
         <div style={{
@@ -1735,12 +1961,12 @@ function LiveQuestionPopup({ question, onAnswer, onClose }) {
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '10px 14px', borderRadius: 12,
-                  background: 'rgba(0,255,136,0.07)',
-                  border: '1px solid rgba(0,255,136,0.15)',
+                  background: 'rgba(163,230,53,0.07)',
+                  border: '1px solid rgba(163,230,53,0.15)',
                   animation: 'slide-in 0.3s ease both',
                 }}>
                   <span style={{ fontSize: 14 }}>🔒</span>
-                  <span style={{ fontSize: 12, color: '#00ff88', fontWeight: 600 }}>
+                  <span style={{ fontSize: 12, color: '#a3e635', fontWeight: 600 }}>
                     Tahmin kilitlendi — sonuç bekleniyor...
                   </span>
                   <span style={{
@@ -1761,7 +1987,7 @@ function LiveQuestionPopup({ question, onAnswer, onClose }) {
               </div>
               <div style={{
                 fontSize: 15, fontWeight: 800,
-                color: selected === question.correctAnswer ? '#00ff88' : '#f43f5e',
+                color: selected === question.correctAnswer ? '#a3e635' : '#f43f5e',
               }}>
                 {selected === question.correctAnswer
                   ? `Doğru! +${question.options.find(o => o.value === selected)?.reward || 0} Puan 🚀`
@@ -1831,16 +2057,16 @@ function ScoringBreakdown({ breakdown }) {
       margin: '12px 0 0',
       padding: '12px 14px',
       borderRadius: 12,
-      background: 'rgba(0,255,136,0.06)',
-      border: '1px solid rgba(0,255,136,0.15)',
+      background: 'rgba(163,230,53,0.06)',
+      border: '1px solid rgba(163,230,53,0.15)',
       animation: 'slide-in 0.3s ease both',
     }}>
       <div style={{ fontSize: 11, color: '#555', fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>PUAN DÖKÜMÜ</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {[
-          { label: '📋 Katılım Puanı', val: `+${participation}`, color: '#60a5fa' },
+          { label: '📋 Katılım Puanı', val: `+${participation}`, color: '#a3e635' },
           { label: '⚡ Cevap Puanı (bekleniyor)', val: `+${question}`, color: '#facc15' },
-          { label: '🧮 Toplam Kazanım', val: `+${total}`, color: '#00ff88' },
+          { label: '🧮 Toplam Kazanım', val: `+${total}`, color: '#a3e635' },
         ].map(row => (
           <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 12, color: '#888' }}>{row.label}</span>
@@ -1856,7 +2082,7 @@ function ScoringBreakdown({ breakdown }) {
    MAIN DASHBOARD
 ───────────────────────────────────────────────── */
 export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme, currentUser, onLogout }) {
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
   useEffect(() => { injectKeyframes(); updateThemeCSSVars(t) }, [])
   // Tema değişince CSS değişkenlerini anında güncelle
   useEffect(() => { updateThemeCSSVars(t) }, [t.id])
@@ -1864,7 +2090,8 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   /* ── Core state ─────────────────────────────── */
   const [league, setLeague]           = useState(params.leagueId || 'wc2026')
   const [copied, setCopied]           = useState(false)
-  const [activeTab, setActiveTab]     = useState('matches') // 'matches' | 'chat'
+  const [activeTab, setActiveTab]     = useState('matches') // 'matches' (home) | 'chat'
+  const [showLeagues, setShowLeagues] = useState(false)     // üst bardaki arama/lig filtresi
   const [duelOpen, setDuelOpen]       = useState(false)
   const [selectedPredictMatch, setSelectedPredictMatch] = useState(null)
 
@@ -1877,8 +2104,9 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
     return dbService.getProfile(currentUser.uid) || dbService.initProfile(currentUser.uid, currentUser.username)
   })
   const [usernameInput, setUsernameInput] = useState(userProfile?.username || '')
-  const [avatarInput, setAvatarInput]     = useState(userProfile?.avatar || '😎')
+  const [avatarInput, setAvatarInput]     = useState(userProfile?.avatar || '')
   const [bioInput, setBioInput]           = useState(userProfile?.bio || '')
+  const photoInputRef                     = useRef(null)
 
   // Password fields state
   const [currentPassword, setCurrentPassword] = useState('')
@@ -1890,6 +2118,8 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteError, setDeleteError]             = useState('')
   const [deleteLoading, setDeleteLoading]         = useState(false)
+  const [deletePassword, setDeletePassword]       = useState('')
+  const deleteSignInProvider = getSignInProvider()
 
   // Toggles state
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -1900,17 +2130,23 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   })
 
   const handleDeleteAccount = async () => {
+    // For email users, require password before proceeding
+    if (deleteSignInProvider === 'email' && !deletePassword.trim()) {
+      setDeleteError('Lütfen hesabınızı doğrulamak için mevcut şifrenizi giriniz.')
+      return
+    }
     setDeleteLoading(true)
     setDeleteError('')
     try {
-      // 1. Firebase authentication and firestore deletion
-      await deleteCurrentUser()
-      
+      // 1. Firebase re-auth + Firestore + Auth deletion
+      await deleteCurrentUser(deletePassword || null)
+
       // 2. Local storage cleanup
       authService.deleteAccount(currentUser.uid)
-      
+
       // 3. Close modal and logout
       setDeleteConfirmOpen(false)
+      setDeletePassword('')
       onLogout()
     } catch (err) {
       console.error('Account deletion error:', err)
@@ -1918,6 +2154,20 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
     } finally {
       setDeleteLoading(false)
     }
+  }
+
+  function handleGalleryPhoto(e) {
+    const file = e.target.files?.[0]
+    if (!file || !file.type.startsWith('image/')) return
+    if (file.size > 3 * 1024 * 1024) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result
+      setAvatarInput(dataUrl)
+      handleUpdateProfile({ avatar: dataUrl })
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
   }
 
   function handleUpdateProfile(updates) {
@@ -2013,7 +2263,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   /* ── Sync profile, predictions and answers on mount/user change ── */
   useEffect(() => {
     const profile = dbService.getProfile(currentUser.uid) || dbService.initProfile(currentUser.uid, currentUser.username)
-    setTotalPoints(profile.totalPoints)
+    setTotalPoints(profile.totalPoints || 0)
     
     // Dynamically build the leaderboard from registered users
     const dynLeaderboard = getDynamicLeaderboard(currentUser.uid)
@@ -2291,32 +2541,39 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
   const roomName = params.roomName || ''
 
+  // Mockup HOME için türetilen veriler (ekstra veri yok — gerçek state'ten)
+  const featuredMatch = matches && matches.length > 0 ? matches[0] : null
+  const otherMatches  = matches && matches.length > 1 ? matches.slice(1) : []
+  const myGroups = (() => {
+    try { return JSON.parse(localStorage.getItem(`vg_my_rooms_${currentUser.uid}`) || '[]') }
+    catch { return [] }
+  })()
+
   return (
-    <div style={{
-      height: '100vh',
+    <div className="vg-app-shell" style={{
+      height: '100dvh',
       background: t.bg,
       fontFamily: 'Inter, sans-serif',
       color: '#fff',
-      maxWidth: 600,
-      margin: '0 auto',
       paddingBottom: 0,
       position: 'relative',
       transition: 'background 0.4s ease',
-      overflow: 'hidden',
+      overflowX: 'hidden',
+      overflowY: 'hidden',
       display: 'flex',
       flexDirection: 'column',
     }}>
-      {/* Ambient circles — tema rengine göre değişir */}
+      {/* Ambient circles — container içinde, taşma yok */}
       <div style={{
-        position: 'fixed', top: '5%', right: '-15%',
-        width: 300, height: 300, borderRadius: '50%',
+        position: 'absolute', top: '5%', right: '-10%',
+        width: 260, height: 260, borderRadius: '50%',
         background: `radial-gradient(circle,${withGlowOpacity(t.glowSoft, 0.07)},transparent 70%)`,
         pointerEvents: 'none', zIndex: 0,
         transition: 'background 0.4s ease',
       }} />
       <div style={{
-        position: 'fixed', bottom: '20%', left: '-20%',
-        width: 350, height: 350, borderRadius: '50%',
+        position: 'absolute', bottom: '20%', left: '-10%',
+        width: 280, height: 280, borderRadius: '50%',
         background: `radial-gradient(circle,${withGlowOpacity(t.glowSoft, 0.05)},transparent 70%)`,
         pointerEvents: 'none', zIndex: 0,
         transition: 'background 0.4s ease',
@@ -2335,6 +2592,8 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
           onClose={() => setDuelOpen(false)}
           leaderboard={leaderboard}
           totalPoints={totalPoints}
+          meName={userProfile?.username || currentUser?.username || 'Sen'}
+          meAvatar={userProfile?.avatar || ''}
           theme={t}
           onWin={() => {
             playGoalSound()
@@ -2350,7 +2609,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
         <>
           {/* Backdrop Overlay */}
           <div
-            onClick={() => { if (!deleteLoading) setDeleteConfirmOpen(false) }}
+            onClick={() => { if (!deleteLoading) { setDeleteConfirmOpen(false); setDeletePassword(''); setDeleteError('') } }}
             style={{
               position: 'fixed', inset: 0, zIndex: 1000,
               background: 'rgba(0,0,0,0.82)',
@@ -2385,9 +2644,47 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
             </h2>
 
             {/* Warning Message */}
-            <p style={{ fontSize: 12.5, color: '#aaa', lineHeight: 1.5, textAlign: 'center', margin: '0 0 20px' }}>
-              Hesabınızı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
+            <p style={{ fontSize: 12.5, color: '#aaa', lineHeight: 1.5, textAlign: 'center', margin: '0 0 16px' }}>
+              Hesabınızı silmek istediğinize emin misiniz? Bu işlem <strong style={{ color: '#ff6b6b' }}>geri alınamaz</strong> ve tüm verileriniz temizlenir.
             </p>
+
+            {/* Re-auth: Email users must enter password */}
+            {deleteSignInProvider === 'email' && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8, textAlign: 'left' }}>
+                  Mevcut Şifrenizi Girin
+                </label>
+                <input
+                  type="password"
+                  placeholder="Kimliğinizi doğrulayın..."
+                  value={deletePassword}
+                  onChange={e => { setDeletePassword(e.target.value); setDeleteError('') }}
+                  style={{
+                    width: '100%', padding: '12px 14px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${deleteError ? 'rgba(255,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                    color: '#fff', fontSize: 13, fontFamily: 'Inter,sans-serif',
+                    outline: 'none', boxSizing: 'border-box',
+                    transition: 'border-color 0.2s'
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Re-auth: Google users see an info badge */}
+            {deleteSignInProvider === 'google' && (
+              <div style={{
+                padding: '10px 12px', borderRadius: 10,
+                background: t.accentSoft,
+                border: `1px solid ${t.accentBorder}`,
+                color: t.accent, fontSize: 11.5, fontWeight: 600,
+                marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8,
+                textAlign: 'left'
+              }}>
+                <span>🔐</span>
+                <span>Google hesabınızla tekrar giriş yapmanız istenecek.</span>
+              </div>
+            )}
 
             {/* Error Banner */}
             {deleteError && (
@@ -2396,7 +2693,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                 background: 'rgba(255,68,68,0.08)',
                 border: '1px solid rgba(255,68,68,0.25)',
                 color: '#ff6b6b', fontSize: 11.5, fontWeight: 600,
-                marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6,
+                marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6,
                 textAlign: 'left'
               }}>
                 <span>⚠️</span>
@@ -2407,7 +2704,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
             {/* Actions Grid */}
             <div style={{ display: 'flex', gap: 10 }}>
               <button
-                onClick={() => setDeleteConfirmOpen(false)}
+                onClick={() => { setDeleteConfirmOpen(false); setDeletePassword(''); setDeleteError('') }}
                 disabled={deleteLoading}
                 style={{
                   flex: 1, padding: '12px', borderRadius: 12,
@@ -2450,14 +2747,37 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       )}
 
       <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <Header
-          league={league} setLeague={setLeague}
-          totalPoints={totalPoints} onNavigate={onNavigate}
-          theme={t} onCycleTheme={onCycleTheme}
-          currentUser={currentUser} onLogout={onLogout}
-          hideLeagues={!!params.roomId}
-          onLogoClick={() => setSidebarOpen(true)}
+        <TopBar
+          theme={t}
+          avatar={userProfile?.avatar || ''}
+          onProfile={() => { setSidebarTab('profile'); setSidebarOpen(true) }}
+          onCycleTheme={onCycleTheme}
+          showLeagues={showLeagues}
+          onToggleSearch={() => setShowLeagues(s => !s)}
         />
+
+        {/* Lig filtresi — arama ikonuyla aç/kapa */}
+        {showLeagues && (
+          <div style={{ padding: '12px 16px 0' }} className="vg-fade">
+            <div style={{ overflowX: 'auto', whiteSpace: 'nowrap' }} className="scroll-hide">
+              <div style={{ display: 'inline-flex', gap: 6 }}>
+                {LEAGUES.map(l => (
+                  <button
+                    key={l.id}
+                    onClick={() => setLeague(l.id)}
+                    style={{
+                      padding: '7px 13px', borderRadius: 10, cursor: 'pointer',
+                      fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', whiteSpace: 'nowrap',
+                      background: league === l.id ? t.accent : t.surface,
+                      color: league === l.id ? t.tabActiveText : t.textMuted,
+                      border: `1px solid ${league === l.id ? t.accent : t.border}`,
+                    }}
+                  >{l.label}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Room context bar ────────────────── */}
         {params.roomName && (
@@ -2477,48 +2797,125 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
           </div>
         )}
 
-        {/* ── Main tabs: Maçlar / Sohbet ──────── */}
-        <div style={{ padding: '16px 20px 0' }}>
-          <div style={{
-            display: 'flex', gap: 4, padding: '4px',
-            background: 'rgba(255,255,255,0.05)',
-            borderRadius: 14,
-          }}>
-            {[
-              { id: 'matches', label: '⚽ Maçlar & Skorlar' },
-              { id: 'chat',    label: '💬 Grup Sohbeti' },
-            ].map(t => (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id)}
-                style={{
-                  flex: 1, padding: '11px 8px', borderRadius: 10, border: 'none',
-                  background: activeTab === t.id ? '#00ff88' : 'transparent',
-                  color: activeTab === t.id ? '#121212' : '#888',
-                  fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 13,
-                  cursor: 'pointer', transition: 'all 0.22s ease',
-                }}
-              >{t.label}</button>
-            ))}
-          </div>
-        </div>
-
-        {/* ── TAB: MATCHES ─────────────────────── */}
+        {/* ── TAB: HOME (MATCHES) ──────────────── */}
         {activeTab === 'matches' && (
-          <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 100 }} className="scroll-hide">
-            <LiveFeed
-              matches={matches}
-              predictions={matchPredictions}
-              loading={matchesLoading}
-              error={matchesError}
-              onRetry={handleRetry}
-              theme={t}
-              onMatchClick={(m) => onNavigate('match/' + m.id)}
-            />
+          <div key="tab-matches" style={{ flex: 1, overflowY: 'auto', paddingBottom: 110 }} className="scroll-hide vg-fade">
+
+            {/* ── Öne çıkan canlı maç ─────────────── */}
+            {matchesLoading ? (
+              <div style={{ margin: '16px 16px 0', height: 150, borderRadius: 20, background: t.surface, border: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: t.textMuted, fontSize: 13 }}>
+                <span style={{ animation: 'spin-slow 1s linear infinite', marginRight: 8 }}>⚙️</span> Maçlar yükleniyor...
+              </div>
+            ) : matchesError ? (
+              <div style={{ margin: '16px 16px 0', padding: '20px', borderRadius: 20, background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)', textAlign: 'center' }}>
+                <div style={{ fontSize: 26, marginBottom: 8 }}>⚠️</div>
+                <div style={{ color: '#f43f5e', fontWeight: 700, fontSize: 13 }}>Bağlantı hatası</div>
+                <button onClick={handleRetry} style={{ marginTop: 12, padding: '8px 18px', borderRadius: 10, background: 'rgba(244,63,94,0.15)', border: '1px solid rgba(244,63,94,0.35)', color: '#f43f5e', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>🔄 Tekrar Dene</button>
+              </div>
+            ) : (
+              <FeaturedMatch match={featuredMatch} theme={t} onClick={() => featuredMatch && onNavigate('match/' + featuredMatch.id)} />
+            )}
+
+            {/* ── Günün maçları ───────────────────── */}
+            {!matchesLoading && !matchesError && featuredMatch && (
+              <section style={{ paddingTop: 26 }}>
+                <SectionTitle theme={t}>Günün Maçları</SectionTitle>
+                {otherMatches.length === 0 ? (
+                  <div style={{ margin: '0 16px', padding: '18px', borderRadius: 14, background: t.surface, border: `1px solid ${t.border}`, textAlign: 'center', color: t.textMuted, fontSize: 12 }}>
+                    Bu ligde başka canlı maç yok.
+                  </div>
+                ) : (
+                  <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {otherMatches.map((m, i) => (
+                      <MatchRow key={m.id} match={m} theme={t} delay={i * 0.05} onClick={() => onNavigate('match/' + m.id)} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* ── Gruplarım ve sosyal ─────────────── */}
+            <section style={{ paddingTop: 26 }}>
+              <SectionTitle theme={t}>Gruplarım ve Sosyal</SectionTitle>
+              <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', padding: '0 16px 4px' }} className="scroll-hide">
+                <div style={{ display: 'inline-flex', gap: 12, verticalAlign: 'top' }}>
+                  {roomName && (
+                    <button
+                      onClick={() => setActiveTab('chat')}
+                      style={{
+                        width: 92, padding: '14px 8px', borderRadius: 16, flexShrink: 0,
+                        background: t.accentSoft, border: `1px solid ${t.accentBorder}`,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer',
+                        whiteSpace: 'normal',
+                      }}
+                    >
+                      <span style={{ fontSize: 22, color: t.accent }}>💬</span>
+                      <span style={{ fontSize: 10.5, color: '#fff', fontWeight: 700, lineHeight: 1.2, textAlign: 'center' }}>Grup Sohbeti</span>
+                    </button>
+                  )}
+                  {myGroups.map(g => (
+                    <button
+                      key={g.id}
+                      onClick={() => onNavigate('rooms')}
+                      style={{
+                        width: 92, padding: '14px 8px', borderRadius: 16, flexShrink: 0,
+                        background: t.surface, border: `1px solid ${t.border}`,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer',
+                        whiteSpace: 'normal',
+                      }}
+                    >
+                      <span style={{ fontSize: 22 }}>{g.avatar || '👥'}</span>
+                      <span style={{ fontSize: 10.5, color: '#fff', fontWeight: 700, lineHeight: 1.2, textAlign: 'center', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{g.name}</span>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => onNavigate('rooms')}
+                    style={{
+                      width: 92, padding: '14px 8px', borderRadius: 16, flexShrink: 0,
+                      background: 'transparent', border: `1px dashed ${t.borderStrong || t.border}`,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer',
+                      whiteSpace: 'normal',
+                    }}
+                  >
+                    <span style={{ fontSize: 24, color: t.accent }}>＋</span>
+                    <span style={{ fontSize: 10.5, color: t.textMuted, fontWeight: 700, lineHeight: 1.2, textAlign: 'center' }}>Yeni Grup Oluştur/Bul</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* ── Oyunlar ─────────────────────────── */}
+            <section style={{ paddingTop: 26 }}>
+              <SectionTitle theme={t}>Oyunlar</SectionTitle>
+              <div style={{ padding: '0 16px' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '14px 14px', borderRadius: 16,
+                  background: t.surface, border: `1px solid ${t.border}`,
+                  flexWrap: 'wrap',
+                }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: t.accentSoft, border: `1px solid ${t.accentBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>⚔️</div>
+                  <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>Tahmin Düellosu</div>
+                    <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>Rakibini seç, birebir kapış</div>
+                  </div>
+                  <button
+                    onClick={() => setDuelOpen(true)}
+                    style={{
+                      flex: '1 1 auto', minWidth: 0, padding: '9px 14px', borderRadius: 10,
+                      background: t.accent, color: t.tabActiveText,
+                      border: 'none', fontWeight: 800, fontSize: 12, cursor: 'pointer',
+                      boxShadow: `0 0 14px ${t.glow}`, fontFamily: 'Inter,sans-serif',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >Hemen Katıl</button>
+                </div>
+              </div>
+            </section>
 
             {/* Enhanced QuestionPanel with scoring */}
             <section style={{ padding: '24px 20px 0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 18 }}>⚡</span>
                 <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>Anlık Sorular</span>
                 <span style={{
@@ -2526,6 +2923,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                   background: t.glowSoft,
                   border: `1px solid ${t.accent}40`,
                   fontSize: 10, color: t.accent, fontWeight: 700,
+                  maxWidth: '100%', lineHeight: 1.4,
                 }}>+{POINTS.PARTICIPATION} katılım · +{POINTS.EXACT_SCORE} birebir · +{POINTS.CORRECT_RESULT} sonuç</span>
               </div>
 
@@ -2761,10 +3159,10 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                                 fontSize: 14, overflow: 'hidden', flexShrink: 0,
                               }}>
-                                {p.avatar && p.avatar.startsWith('http') ? (
-                                  <img src={p.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.src = '😎' }} />
+                                {isPhotoAvatar(p.avatar) ? (
+                                  <img src={p.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
-                                  p.avatar || '😎'
+                                  <UserAvatarIcon size={12} color={t.textMuted} />
                                 )}
                               </span>
                               <span style={{ color: p.isMe ? t.accent : '#e5e7eb', fontWeight: p.isMe ? 700 : 500, fontSize: 13 }}>
@@ -2793,7 +3191,8 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
               </div>
             </section>
 
-            {/* Quick stats */}
+            {/* Quick stats — yalnızca tahmin yapıldıysa göster */}
+            {(myPlayer?.total || 0) > 0 && (
             <section style={{ padding: '20px 20px 0', display: 'flex', gap: 12 }}>
               {[
                 { icon: '🎯', value: String(myPlayer?.correct || 0), sub: 'isabetli' },
@@ -2811,30 +3210,50 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                 </div>
               ))}
             </section>
+            )}
           </div>
         )}
 
         {/* ── TAB: CHAT ────────────────────────── */}
         {activeTab === 'chat' && (
-          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div key="tab-chat" className="vg-fade" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {/* Geri barı */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: `1px solid ${t.border}` }}>
+              <button
+                onClick={() => setActiveTab('matches')}
+                aria-label="Geri"
+                style={{ width: 34, height: 34, borderRadius: 9, background: t.surface, border: `1px solid ${t.border}`, color: t.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+              </button>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{roomName || 'Grup Sohbeti'}</div>
+            </div>
             {!roomName ? (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '40px 22px', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: '#888' }}>
                 <div style={{ fontSize: 34, marginBottom: 12 }}>💬</div>
                 <div style={{ color: '#fff', fontSize: 14, fontWeight: 700, lineHeight: 1.5, marginBottom: 8 }}>
                   Sohbet Odası Seçilmedi
                 </div>
-                <div style={{ fontSize: 12, lineHeight: 1.5, color: '#666' }}>
-                  Diğer üyelerle mesajlaşabilmek için lütfen sağ üstteki <b>"Odalar"</b> sekmesinden bir gruba katılın veya yeni bir grup kurun.
+                <div style={{ fontSize: 12, lineHeight: 1.5, color: '#666', marginBottom: 16 }}>
+                  Diğer üyelerle mesajlaşabilmek için alt bardaki <b>"Gruplar"</b> sekmesinden bir gruba katılın veya yeni bir grup kurun.
                 </div>
+                <button onClick={() => onNavigate('rooms')} style={{ padding: '10px 20px', borderRadius: 12, background: t.accent, color: t.tabActiveText, border: 'none', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>Gruplara Git</button>
               </div>
             ) : (
-              <GroupChat roomName={roomName} onlineCount={3} currentUser={currentUser} userProfile={userProfile} />
+              <GroupChat roomName={roomName} currentUser={currentUser} userProfile={userProfile} theme={t} />
             )}
           </div>
         )}
       </div>
 
-      <BottomActions copied={copied} setCopied={setCopied} onDuel={() => setDuelOpen(true)} theme={t} />
+      <BottomNav
+        theme={t}
+        active={activeTab === 'chat' ? 'groups' : 'home'}
+        onHome={() => setActiveTab('matches')}
+        onGroups={() => onNavigate('rooms')}
+        onGames={() => setDuelOpen(true)}
+        onProfile={() => { setSidebarTab('profile'); setSidebarOpen(true) }}
+      />
 
       {/* Match Prediction Modal */}
       {selectedPredictMatch && (
@@ -2881,6 +3300,9 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
         transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease',
         display: 'flex',
         flexDirection: 'column',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         fontFamily: 'Inter, sans-serif',
       }}>
         {/* Drawer Header */}
@@ -2967,71 +3389,63 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
           {/* TAB: PROFILE */}
           {sidebarTab === 'profile' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* User Avatar & Info */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              {/* Profil fotoğrafı */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginBottom: 10 }}>
                 <div style={{
-                  width: 80, height: 80, borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.05)',
+                  width: 88, height: 88, borderRadius: '50%',
+                  background: t.surface,
                   border: `2px solid ${t.accent}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 42,
+                  overflow: 'hidden',
                   boxShadow: `0 0 20px ${t.glowSoft}`,
                 }}>
-                  {avatarInput && avatarInput.startsWith('http') ? (
-                    <img src={avatarInput} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} onError={(e) => { e.target.src = '😎' }} />
+                  {isPhotoAvatar(avatarInput) ? (
+                    <img src={avatarInput} alt="Profil" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
-                    avatarInput || '😎'
+                    <UserAvatarIcon size={36} color={t.textMuted} />
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: t.accent, fontWeight: 700 }}>{userProfile?.badge ? `🏆 ${BADGES[userProfile.badge]?.label || 'Çaylak'}` : 'Çaylak'}</div>
-              </div>
-
-              {/* Avatar Picker Emojis */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{ fontSize: 11, color: '#666', fontWeight: 700, letterSpacing: 0.5 }}>AVATAR SEÇİN</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px', background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)' }}>
-                  {['😎', '👨‍💼', '🧑‍🦱', '🧔', '🙄', '🦁', '⚽', '🏆', '🦖', '👾', '🛸', '👽', '👑'].map(emoji => (
-                    <button
-                      key={emoji}
-                      onClick={() => {
-                        setAvatarInput(emoji)
-                        handleUpdateProfile({ avatar: emoji })
-                      }}
-                      style={{
-                        width: 36, height: 36, borderRadius: 8,
-                        background: avatarInput === emoji ? t.accent : 'transparent',
-                        border: avatarInput === emoji ? `1px solid ${t.accent}` : '1.5px solid rgba(255,255,255,0.05)',
-                        fontSize: 20, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Custom Avatar URL */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{ fontSize: 11, color: '#666', fontWeight: 700, letterSpacing: 0.5 }}>VEYA GÖRSEL URL GİRİN</label>
                 <input
-                  type="text"
-                  placeholder="https://example.com/image.png"
-                  value={avatarInput && avatarInput.startsWith('http') ? avatarInput : ''}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    setAvatarInput(val || '😎')
-                    handleUpdateProfile({ avatar: val || '😎' })
-                  }}
-                  style={{
-                    padding: '10px 14px', borderRadius: 12,
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    color: '#fff', fontSize: 12, outline: 'none',
-                    fontFamily: 'Inter,sans-serif',
-                  }}
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleGalleryPhoto}
                 />
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  style={{
+                    padding: '10px 18px', borderRadius: 12,
+                    background: t.accentSoft,
+                    border: `1px solid ${t.accentBorder}`,
+                    color: t.accent, fontWeight: 700, fontSize: 13,
+                    cursor: 'pointer', fontFamily: 'Inter,sans-serif',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" />
+                  </svg>
+                  Galeriden Fotoğraf Seç
+                </button>
+                {isPhotoAvatar(avatarInput) && (
+                  <button
+                    type="button"
+                    onClick={() => { setAvatarInput(''); handleUpdateProfile({ avatar: '' }) }}
+                    style={{
+                      padding: '6px 14px', borderRadius: 10,
+                      background: 'transparent', border: `1px solid ${t.border}`,
+                      color: t.textMuted, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      fontFamily: 'Inter,sans-serif',
+                    }}
+                  >
+                    Fotoğrafı Kaldır
+                  </button>
+                )}
+                <div style={{ fontSize: 11, color: t.accent, fontWeight: 700 }}>
+                  {userProfile?.badge ? `🏆 ${BADGES[userProfile.badge]?.label || 'Çaylak'}` : 'Çaylak'}
+                </div>
               </div>
 
               {/* Username Input */}
@@ -3398,7 +3812,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
    PREDICTION MODAL
    ───────────────────────────────────────────────── */
 function PredictionModal({ match, prediction, onSave, onClose, theme }) {
-  const t = theme || THEMES.night
+  const t = theme || THEMES.slate
   const [homeScore, setHomeScore] = useState(prediction ? String(prediction.homeScore) : '')
   const [awayScore, setAwayScore] = useState(prediction ? String(prediction.awayScore) : '')
   const [error, setError] = useState('')
