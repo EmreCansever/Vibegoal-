@@ -65,6 +65,8 @@ function injectRoomStyles() {
     .room-card:hover  { transform: translateX(4px) !important; background: rgba(255,255,255,0.07) !important; }
     .pub-card:hover   { transform: translateY(-2px) !important; border-color: rgba(255,255,255,0.2) !important; }
     .leave-btn:hover  { background: rgba(255,40,40,0.25) !important; border-color: #ff4444 !important; }
+    .delete-btn:hover { background: rgba(255,40,40,0.35) !important; border-color: #ff4444 !important; }
+    .copy-code-btn:hover { filter: brightness(1.12); transform: scale(1.02); }
     .join-req-btn:hover { filter: brightness(1.15); transform: scale(1.03); }
     .join-req-btn.sent { background: color-mix(in srgb, var(--vg-accent) 15%, transparent) !important; border-color: var(--vg-accent) !important; color: var(--vg-accent) !important; cursor: default !important; }
     .create-btn-main:hover { filter: brightness(1.1); transform: scale(1.03); }
@@ -118,12 +120,43 @@ function GlassPanel({ children, style = {} }) {
   )
 }
 
+function copyToClipboard(text) {
+  if (!text) return Promise.reject(new Error('Kopyalanacak metin yok'))
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text)
+  }
+  return new Promise((resolve, reject) => {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      resolve()
+    } catch (err) {
+      reject(err)
+    }
+  })
+}
+
+function buildInviteLink(inviteCode) {
+  const base = `${window.location.origin}${window.location.pathname}`
+  return `${base}#/rooms?code=${encodeURIComponent(inviteCode)}`
+}
+
 /* ─────────────────────────────────────────────────
    MY ROOMS TAB
 ───────────────────────────────────────────────── */
 
-function MyRoomCard({ room, onEnter, onLeave, idx }) {
+function MyRoomCard({ room, onEnter, onLeave, onDelete, theme, idx }) {
+  const t = theme || THEMES.slate
   const [leaving, setLeaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   if (!room?.id) return null
 
@@ -131,6 +164,7 @@ function MyRoomCard({ room, onEnter, onLeave, idx }) {
   const memberCount = Number(room?.members) || 0
   const maxMembers = Number(room?.maxMembers) || 20
   const totalPoints = Number(room?.totalPoints) || 0
+  const inviteCode = room?.inviteCode || ''
 
   function handleLeave(e) {
     e.stopPropagation()
@@ -139,21 +173,54 @@ function MyRoomCard({ room, onEnter, onLeave, idx }) {
     setTimeout(() => { setLeaving(false); onLeave(room.id) }, 400)
   }
 
+  function handleDelete(e) {
+    e.stopPropagation()
+    if (!room?.id || deleting) return
+    if (!window.confirm(`"${room.name}" grubunu kalıcı olarak silmek istediğine emin misin?`)) return
+    setDeleting(true)
+    onDelete(room.id).finally(() => setDeleting(false))
+  }
+
+  async function handleCopyCode(e) {
+    e.stopPropagation()
+    if (!inviteCode) return
+    try {
+      await copyToClipboard(inviteCode)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function handleShareLink(e) {
+    e.stopPropagation()
+    if (!inviteCode) return
+    try {
+      await copyToClipboard(buildInviteLink(inviteCode))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* ignore */
+    }
+  }
+
   return (
     <div
       className="room-card"
       onClick={() => room && onEnter(room)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 14,
+        display: 'flex', flexDirection: 'column', gap: 12,
         padding: '16px 18px',
         borderBottom: '1px solid rgba(255,255,255,0.05)',
         cursor: 'pointer',
         transition: 'all 0.22s ease',
         animation: `room-card-in ${0.15 + idx * 0.07}s ease both`,
-        opacity: leaving ? 0.3 : 1,
+        opacity: leaving || deleting ? 0.3 : 1,
         transform: leaving ? 'translateX(-30px)' : undefined,
       }}
     >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
       {/* Avatar circle */}
       <div style={{
         width: 48, height: 48, borderRadius: 14, flexShrink: 0,
@@ -179,6 +246,13 @@ function MyRoomCard({ room, onEnter, onLeave, idx }) {
               fontSize: 9, color: '#facc15', fontWeight: 700, letterSpacing: 0.5,
             }}>ADMİN</span>
           )}
+          {room?.isPublic && (
+            <span style={{
+              padding: '1px 7px', borderRadius: 50,
+              background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.3)',
+              fontSize: 9, color: '#38bdf8', fontWeight: 700, letterSpacing: 0.5,
+            }}>KEŞFET</span>
+          )}
         </div>
         <div style={{ fontSize: 11, color: '#666', marginBottom: 6 }}>
           {room?.league || '—'} · {memberCount}/{maxMembers} üye
@@ -190,26 +264,106 @@ function MyRoomCard({ room, onEnter, onLeave, idx }) {
         </div>
       </div>
 
-      {/* Leave btn */}
-      <button
-        className="leave-btn"
-        onClick={handleLeave}
-        title="Gruptan Çık"
-        style={{
-          flexShrink: 0,
-          padding: '7px 12px', borderRadius: 10,
-          background: 'rgba(255,40,40,0.1)',
-          border: '1px solid rgba(255,40,40,0.25)',
-          color: '#ff6b6b', fontSize: 11, fontWeight: 700,
-          cursor: 'pointer',
-          fontFamily: 'Inter,sans-serif',
-          transition: 'all 0.2s ease',
-          display: 'flex', alignItems: 'center', gap: 5,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        <span>🚪</span> Çık
-      </button>
+      {/* Actions */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+        {room?.isAdmin && (
+          <button
+            className="delete-btn"
+            onClick={handleDelete}
+            disabled={deleting}
+            title="Grubu Sil"
+            style={{
+              padding: '7px 12px', borderRadius: 10,
+              background: 'rgba(255,40,40,0.15)',
+              border: '1px solid rgba(255,40,40,0.35)',
+              color: '#ff6b6b', fontSize: 11, fontWeight: 700,
+              cursor: deleting ? 'default' : 'pointer',
+              fontFamily: 'Inter,sans-serif',
+              transition: 'all 0.2s ease',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              whiteSpace: 'nowrap',
+              opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            <span>🗑️</span> {deleting ? 'Siliniyor...' : 'Sil'}
+          </button>
+        )}
+        <button
+          className="leave-btn"
+          onClick={handleLeave}
+          title="Gruptan Çık"
+          style={{
+            padding: '7px 12px', borderRadius: 10,
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: '#aaa', fontSize: 11, fontWeight: 700,
+            cursor: 'pointer',
+            fontFamily: 'Inter,sans-serif',
+            transition: 'all 0.2s ease',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <span>🚪</span> Çık
+        </button>
+      </div>
+      </div>
+
+      {/* Invite code row */}
+      {inviteCode && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '10px 12px', borderRadius: 12,
+            background: 'rgba(255,255,255,0.04)',
+            border: `1px solid ${roomColor}33`,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 9, color: '#666', fontWeight: 700, letterSpacing: 1, marginBottom: 3 }}>
+              GRUP DAVET KODU
+            </div>
+            <div style={{
+              fontFamily: 'monospace', fontSize: 12, fontWeight: 700,
+              color: t.accent, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {inviteCode}
+            </div>
+          </div>
+          <button
+            className="copy-code-btn"
+            onClick={handleCopyCode}
+            style={{
+              padding: '7px 10px', borderRadius: 9, border: 'none',
+              background: copied ? t.accentSoft : 'rgba(255,255,255,0.08)',
+              color: copied ? t.accent : '#ccc',
+              fontSize: 10, fontWeight: 700, cursor: 'pointer',
+              fontFamily: 'Inter,sans-serif', whiteSpace: 'nowrap',
+            }}
+          >
+            {copied ? '✓ Kopyalandı' : '📋 Kod'}
+          </button>
+          <button
+            className="copy-code-btn"
+            onClick={handleShareLink}
+            style={{
+              padding: '7px 10px', borderRadius: 9, border: 'none',
+              background: 'rgba(255,255,255,0.08)',
+              color: '#ccc', fontSize: 10, fontWeight: 700, cursor: 'pointer',
+              fontFamily: 'Inter,sans-serif', whiteSpace: 'nowrap',
+            }}
+          >
+            🔗 Link
+          </button>
+        </div>
+      )}
+
+      {!room?.isPublic && (
+        <div style={{ fontSize: 10, color: '#555', paddingLeft: 2 }}>
+          🔒 Gizli oda — Keşfet&apos;te görünmez, yalnızca davet kodu ile katılınır.
+        </div>
+      )}
     </div>
   )
 }
@@ -233,7 +387,7 @@ function RoomsLoadingState() {
   )
 }
 
-function MyRoomsTab({ rooms, onEnter, onLeave, loading }) {
+function MyRoomsTab({ rooms, onEnter, onLeave, onDelete, theme, loading }) {
   const safeRooms = Array.isArray(rooms) ? rooms.filter((r) => r?.id) : []
 
   if (loading) {
@@ -251,7 +405,15 @@ function MyRoomsTab({ rooms, onEnter, onLeave, loading }) {
       ) : (
         <GlassPanel style={{ margin: '0 20px', borderRadius: 20 }}>
           {safeRooms.map((r, i) => (
-            <MyRoomCard key={r?.id} room={r} onEnter={onEnter} onLeave={onLeave} idx={i} />
+            <MyRoomCard
+              key={r?.id}
+              room={r}
+              onEnter={onEnter}
+              onLeave={onLeave}
+              onDelete={onDelete}
+              theme={theme}
+              idx={i}
+            />
           ))}
         </GlassPanel>
       )}
@@ -264,7 +426,7 @@ function MyRoomsTab({ rooms, onEnter, onLeave, loading }) {
 ───────────────────────────────────────────────── */
 
 function PublicRoomCard({ room, idx, onRequestSent }) {
-  const [sent, setSent] = useState(room?.requested)
+  const [sent, setSent] = useState(room?.isMember || room?.requested)
 
   if (!room?.id) return null
 
@@ -466,19 +628,22 @@ function CreateRoomModal({ onClose, onCreate, theme }) {
   const t = theme || THEMES.slate
   const [name, setName]       = useState('')
   const [league, setLeague]   = useState('wc2026')
-  const [isPublic, setPublic] = useState(false)
+  const [isPublic, setPublic] = useState(true)
   const [loading, setLoading] = useState(false)
   const [done, setDone]       = useState(false)
   const [error, setError]     = useState('')
+  const [createdRoom, setCreatedRoom] = useState(null)
+  const [copied, setCopied]   = useState(false)
 
   async function handleCreate() {
     if (!name.trim() || loading) return
     setLoading(true)
     setError('')
     try {
-      await onCreate({ name: name.trim(), league, isPublic })
+      const result = await onCreate({ name: name.trim(), league, isPublic })
+      setCreatedRoom(result)
       setDone(true)
-      setTimeout(() => onClose(), 900)
+      setTimeout(() => onClose(), 4000)
     } catch (err) {
       console.error('Oda oluşturma hatası:', err)
       const code = err?.code || ''
@@ -551,10 +716,78 @@ function CreateRoomModal({ onClose, onCreate, theme }) {
 
         {done ? (
           /* Success state */
-          <div style={{ textAlign: 'center', padding: '24px 0' }}>
+          <div style={{ textAlign: 'center', padding: '16px 0 8px' }}>
             <div style={{ fontSize: 56, marginBottom: 12, animation: 'join-success 0.5s ease' }}>🎉</div>
             <div style={{ fontSize: 18, fontWeight: 800, color: t.accent, marginBottom: 6 }}>Grup Oluşturuldu!</div>
-            <div style={{ fontSize: 13, color: '#666' }}>"{name}" odana hoş geldin!</div>
+            <div style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>&quot;{name}&quot; odana hoş geldin!</div>
+
+            {createdRoom?.inviteCode && (
+              <div style={{
+                padding: '16px', borderRadius: 16, textAlign: 'left',
+                background: 'rgba(255,255,255,0.05)',
+                border: `1px solid ${t.accentBorder || 'rgba(255,255,255,0.12)'}`,
+                marginBottom: 12,
+              }}>
+                <div style={{ fontSize: 10, color: '#888', fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
+                  GRUP DAVET KODU
+                </div>
+                <div style={{
+                  fontFamily: 'monospace', fontSize: 15, fontWeight: 800,
+                  color: t.accent, marginBottom: 12, wordBreak: 'break-all',
+                }}>
+                  {createdRoom.inviteCode}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="copy-code-btn"
+                    onClick={async () => {
+                      try {
+                        await copyToClipboard(createdRoom.inviteCode)
+                        setCopied(true)
+                        setTimeout(() => setCopied(false), 2000)
+                      } catch { /* ignore */ }
+                    }}
+                    style={{
+                      flex: 1, padding: '11px', borderRadius: 12, border: 'none',
+                      background: copied ? t.accentSoft : `linear-gradient(135deg,${t.accent},${t.accentAlt})`,
+                      color: copied ? t.accent : t.tabActiveText,
+                      fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                      fontFamily: 'Inter,sans-serif',
+                    }}
+                  >
+                    {copied ? '✓ Kopyalandı!' : '📋 Kodu Kopyala'}
+                  </button>
+                  <button
+                    className="copy-code-btn"
+                    onClick={async () => {
+                      try {
+                        await copyToClipboard(buildInviteLink(createdRoom.inviteCode))
+                        setCopied(true)
+                        setTimeout(() => setCopied(false), 2000)
+                      } catch { /* ignore */ }
+                    }}
+                    style={{
+                      flex: 1, padding: '11px', borderRadius: 12, border: 'none',
+                      background: 'rgba(255,255,255,0.08)',
+                      color: '#ccc', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                      fontFamily: 'Inter,sans-serif',
+                    }}
+                  >
+                    🔗 Linki Kopyala
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {createdRoom?.isPublic ? (
+              <div style={{ fontSize: 11, color: '#666' }}>
+                🌐 Grup &quot;Odaları Keşfet&quot; sekmesinde görünüyor.
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: '#666' }}>
+                🔒 Gizli grup — yalnızca davet kodu ile katılım sağlanır.
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -677,11 +910,15 @@ function CreateRoomModal({ onClose, onCreate, theme }) {
    JOIN BY CODE PANEL
 ───────────────────────────────────────────────── */
 
-function JoinByCode({ onJoined, theme, currentUser }) {
+function JoinByCode({ onJoined, theme, currentUser, initialCode = '' }) {
   const t = theme || THEMES.slate
-  const [code, setCode]     = useState('')
+  const [code, setCode]     = useState(initialCode)
   const [status, setStatus] = useState('idle') // idle | loading | success | error
   const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (initialCode) setCode(initialCode)
+  }, [initialCode])
 
   async function handleJoin() {
     if (!code.trim() || !currentUser?.uid) return
@@ -826,6 +1063,20 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
   const [activeTab, setActiveTab] = useState('mine')
   const [showCreate, setShowCreate] = useState(false)
   const [toast, setToast] = useState(null)
+  const [inviteFromUrl, setInviteFromUrl] = useState('')
+
+  useEffect(() => {
+    try {
+      const hash = window.location.hash || ''
+      const qIndex = hash.indexOf('?')
+      if (qIndex === -1) return
+      const params = new URLSearchParams(hash.slice(qIndex + 1))
+      const code = params.get('code')
+      if (code) setInviteFromUrl(code.trim())
+    } catch {
+      /* ignore */
+    }
+  }, [])
 
   useEffect(() => {
     let unsubUser = () => {}
@@ -853,7 +1104,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
       setRoomsLoading(false)
     }
 
-    unsubPublic = roomService.subscribePublicRooms(handlePublicRooms)
+    unsubPublic = roomService.subscribePublicRooms(handlePublicRooms, uid)
 
     return () => {
       cancelled = true
@@ -882,8 +1133,26 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
     if (!currentUser?.uid) return
     try {
       await roomService.leaveRoom(id, currentUser.uid)
+      setToast('Gruptan ayrıldın.')
+      setTimeout(() => setToast(null), 3000)
     } catch (err) {
       console.error('Odadan ayrılma hatası:', err)
+      setToast('Gruptan ayrılamadı.')
+      setTimeout(() => setToast(null), 3000)
+    }
+  }
+
+  async function handleDeleteRoom(id) {
+    if (!currentUser?.uid) return
+    try {
+      await roomService.deleteRoom(id, currentUser.uid)
+      setToast('🗑️ Grup silindi.')
+      setTimeout(() => setToast(null), 3000)
+    } catch (err) {
+      console.error('Grup silme hatası:', err)
+      setToast(err?.message || 'Grup silinemedi.')
+      setTimeout(() => setToast(null), 3500)
+      throw err
     }
   }
 
@@ -892,7 +1161,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
       throw new Error('Oturum açmanız gerekiyor.')
     }
     const leagueOpt = LEAGUE_OPTIONS.find(l => l.id === roomData.league)
-    await roomService.createRoom({
+    const created = await roomService.createRoom({
       name: roomData.name,
       leagueId: roomData.league,
       leagueLabel: leagueOpt?.label || roomData.league,
@@ -902,6 +1171,10 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
     })
     setToast(`🎉 "${roomData.name}" odası oluşturuldu!`)
     setTimeout(() => setToast(null), 3500)
+    if (roomData.isPublic) {
+      setActiveTab('discover')
+    }
+    return created
   }
 
   async function handleJoined(room) {
@@ -1043,12 +1316,21 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
 
         {/* ── JOIN BY CODE (always visible) ──────── */}
         <div style={{ padding: '20px 0 0' }}>
-          <JoinByCode onJoined={handleJoined} theme={t} currentUser={currentUser} />
+          <JoinByCode onJoined={handleJoined} theme={t} currentUser={currentUser} initialCode={inviteFromUrl} />
         </div>
 
         {/* ── TAB CONTENT ────────────────────────── */}
         {activeTab === 'mine'
-          ? <MyRoomsTab rooms={myRooms} onEnter={handleEnterRoom} onLeave={handleLeaveRoom} loading={roomsLoading} />
+          ? (
+            <MyRoomsTab
+              rooms={myRooms}
+              onEnter={handleEnterRoom}
+              onLeave={handleLeaveRoom}
+              onDelete={handleDeleteRoom}
+              theme={t}
+              loading={roomsLoading}
+            />
+          )
           : <DiscoverTab theme={t} publicRooms={publicRooms} onJoinRoom={handleJoined} loading={roomsLoading} />
         }
       </div>
