@@ -211,9 +211,14 @@ export const roomService = {
     };
 
     await setDoc(roomRef, payload);
-    const saved = await getDoc(roomRef);
-    const mapped = mapRoomDoc(saved, ownerId);
-    if (mapped) return mapped;
+
+    try {
+      const saved = await getDoc(roomRef);
+      const mapped = mapRoomDoc(saved, ownerId);
+      if (mapped) return mapped;
+    } catch (err) {
+      console.warn('Oda oluşturuldu; okuma atlandı:', err);
+    }
 
     return {
       id: roomRef.id,
