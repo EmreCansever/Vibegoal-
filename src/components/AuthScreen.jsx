@@ -14,10 +14,6 @@ function injectCyberpunkStyles() {
   const styleTag = document.createElement('style')
   styleTag.id = AUTH_STYLE_ID
   styleTag.textContent = `
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
-    
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    
     /* Cyberpunk floating keyframes for green aura */
     @keyframes drift-fog-1 {
       0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.25; }

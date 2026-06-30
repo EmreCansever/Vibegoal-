@@ -15,10 +15,8 @@ import {
   subscribeAuthState,
   sessionUserFromAuth,
   syncUserProfileInBackground,
-  mapFirebaseUserToSession,
   upsertUserDocument,
   patchUserDocument,
-  waitForAuthReady,
 } from './firebase';
 
 const LS_KEYS = {
@@ -102,8 +100,6 @@ export const authService = {
       return () => {};
     }
 
-    await waitForAuthReady();
-
     const applyFirebaseUser = (firebaseUser) => {
       if (!firebaseUser) {
         cacheSessionUser(null);
@@ -120,7 +116,8 @@ export const authService = {
       });
     };
 
-    applyFirebaseUser(auth?.currentUser ?? null);
+    const cached = this.getCurrentUser();
+    if (cached) callback(cached);
 
     return subscribeAuthState((firebaseUser) => {
       applyFirebaseUser(firebaseUser);
@@ -134,9 +131,12 @@ export const authService = {
     if (isFirebaseConfigured) {
       try {
         const firebaseUser = await registerWithEmail({ email, password, username });
-        const sessionUser = await mapFirebaseUserToSession(firebaseUser);
+        const sessionUser = mergeSessionWithLocalProfile(sessionUserFromAuth(firebaseUser));
         cacheSessionUser(sessionUser);
         dbService.initProfile(sessionUser.uid, sessionUser.username);
+        syncUserProfileInBackground(firebaseUser).then((doc) => {
+          if (doc) profileToCache(firebaseUser.uid, doc);
+        });
         return { success: true, user: sessionUser };
       } catch (err) {
         return { success: false, error: err };
@@ -183,7 +183,6 @@ export const authService = {
     if (isFirebaseConfigured) {
       try {
         const firebaseUser = await loginWithEmail({ email, password });
-        await waitForAuthReady();
         const sessionUser = mergeSessionWithLocalProfile(sessionUserFromAuth(firebaseUser));
         cacheSessionUser(sessionUser);
 
@@ -220,13 +219,16 @@ export const authService = {
     if (!firebaseUser) return { success: false, error: 'Kullanıcı bilgileri bulunamadı.' };
 
     if (isFirebaseConfigured) {
-      await upsertUserDocument(firebaseUser);
-      const sessionUser = await mapFirebaseUserToSession(firebaseUser);
+      const sessionUser = mergeSessionWithLocalProfile(sessionUserFromAuth(firebaseUser));
       cacheSessionUser(sessionUser);
       dbService.initProfile(sessionUser.uid, sessionUser.username);
       if (sessionUser.avatar) {
         dbService.updateProfile(sessionUser.uid, { avatar: sessionUser.avatar });
       }
+      upsertUserDocument(firebaseUser).catch(() => {});
+      syncUserProfileInBackground(firebaseUser).then((doc) => {
+        if (doc) profileToCache(firebaseUser.uid, doc);
+      });
       return { success: true, user: sessionUser };
     }
 

@@ -196,13 +196,20 @@ export async function emailAccountExists(email) {
   }
 
   if (db) {
-    const q = query(
-      collection(db, 'users'),
-      where('email', '==', normalized),
-      limit(1),
-    );
-    const snap = await getDocs(q);
-    if (!snap.empty) return true;
+    try {
+      const q = query(
+        collection(db, 'users'),
+        where('email', '==', normalized),
+        limit(1),
+      );
+      const snap = await Promise.race([
+        getDocs(q),
+        new Promise((_, reject) => { setTimeout(() => reject(new Error('timeout')), 3000); }),
+      ]);
+      if (!snap.empty) return true;
+    } catch {
+      /* Firestore yavas — Auth sonucu yeterli */
+    }
   }
 
   return false;
@@ -228,9 +235,9 @@ export async function registerWithEmail({ email, password, username }) {
   }
 
   try {
-    await upsertUserDocument(cred.user, { username });
-  } catch (err) {
-    console.warn('Firestore profil oluşturulamadı (Auth hesabı oluşturuldu):', err);
+    upsertUserDocument(cred.user, { username }).catch(() => {});
+  } catch {
+    /* ignore */
   }
 
   return cred.user;
@@ -328,7 +335,7 @@ export async function signInWithGoogle() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   const result = await signInWithPopup(auth, provider);
-  await upsertUserDocument(result.user);
+  upsertUserDocument(result.user).catch(() => {});
   return result.user;
 }
 
@@ -342,7 +349,7 @@ export async function signInWithApple() {
   await ensureAuthPersistence();
   const provider = new OAuthProvider('apple.com');
   const result = await signInWithPopup(auth, provider);
-  await upsertUserDocument(result.user);
+  upsertUserDocument(result.user).catch(() => {});
   return result.user;
 }
 

@@ -11,9 +11,8 @@ export default function SplashScreen({ onFinish }) {
 
   useEffect(() => {
     // Görünür kalma süresi → fade-out tetikle
-    const leaveTimer = setTimeout(() => setLeaving(true), 2200)
-    // Fade-out tamamlanınca üst bileşene haber ver (unmount)
-    const doneTimer = setTimeout(() => onFinish && onFinish(), 2850)
+    const leaveTimer = setTimeout(() => setLeaving(true), 900)
+    const doneTimer = setTimeout(() => onFinish && onFinish(), 1200)
     return () => {
       clearTimeout(leaveTimer)
       clearTimeout(doneTimer)
@@ -38,7 +37,7 @@ export default function SplashScreen({ onFinish }) {
         opacity: leaving ? 0 : 1,
         transform: leaving ? 'scale(1.04)' : 'scale(1)',
         transition: 'opacity 0.6s ease, transform 0.6s ease',
-        pointerEvents: leaving ? 'none' : 'auto',
+        pointerEvents: 'none',
         overflow: 'hidden',
       }}
     >

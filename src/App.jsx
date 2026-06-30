@@ -1,11 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import Dashboard from './components/Dashboard'
-import RoomScreen from './components/RoomScreen'
 import AuthScreen from './components/AuthScreen'
-import MatchDetail from './components/MatchDetail'
 import SplashScreen from './components/SplashScreen'
 import { authService } from './services/dataService'
+
+const Dashboard = lazy(() => import('./components/Dashboard'))
+const RoomScreen = lazy(() => import('./components/RoomScreen'))
+const MatchDetail = lazy(() => import('./components/MatchDetail'))
+
+function RouteFallback() {
+  return (
+    <div style={{ minHeight: '100svh', background: '#18181b' }} aria-hidden="true" />
+  )
+}
 
 /* ═══════════════════════════════════════════════════════════════
    2 TEMALİ MOTOR — Tüm inline-style'lar bu objeyi dinler.
@@ -137,7 +144,9 @@ export default function App() {
   const [params, setParams]           = useState({})
   const [themeId, setThemeId]         = useState(loadTheme)
   // Karşılama ekranı: yalnızca uygulama ilk açıldığında bir kez gösterilir
-  const [showSplash, setShowSplash]   = useState(true)
+  const [showSplash, setShowSplash] = useState(() => {
+    try { return sessionStorage.getItem('vg_splash_done') !== '1' } catch { return true }
+  })
 
   const navigateHook = useNavigate()
   const location = useLocation()
@@ -168,6 +177,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    const runCleanup = () => {
     // Database Cleanup: Purge any remnants of mock/test users from localStorage
     try {
       const users = JSON.parse(localStorage.getItem('vg_users') || '{}')
@@ -268,6 +278,9 @@ export default function App() {
       localStorage.clear()
       window.location.reload()
     }
+    }
+    const id = setTimeout(runCleanup, 0)
+    return () => clearTimeout(id)
   }, [])
 
   function navigate(to, extraParams = {}) {
@@ -318,8 +331,14 @@ export default function App() {
 
   return (
     <>
-    {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+    {showSplash && (
+      <SplashScreen onFinish={() => {
+        try { sessionStorage.setItem('vg_splash_done', '1') } catch { /* ignore */ }
+        setShowSplash(false)
+      }} />
+    )}
     <div className="vg-route" key={routeKey}>
+    <Suspense fallback={<RouteFallback />}>
     <Routes location={location}>
       <Route path="/auth" element={
         currentUser ? <Navigate to="/dashboard" replace /> : <AuthScreen onAuth={handleAuth} />
@@ -362,6 +381,7 @@ export default function App() {
       } />
       <Route path="*" element={<Navigate to={currentUser ? "/dashboard" : "/auth"} replace />} />
     </Routes>
+    </Suspense>
     </div>
     </>
   )

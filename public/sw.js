@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vibegoal-cache-v3';
+const CACHE_NAME = 'vibegoal-cache-v4';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -39,12 +39,7 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // Bypass:
-  //  - Vite dev-server internals & HMR (/@vite/, /@react-refresh, /@id/, /@fs/)
-  //  - Ham kaynak modülleri (/src/) ve bağımlılıklar (/node_modules/)
-  //  - Vite tarafından versiyonlanan modüller (?t= / ?v=) → bayat React/JS kopyasını önler
-  //  - Modül dosya uzantıları (.jsx/.ts/.tsx/.mjs)
-  //  - socket/ws, futbol API, tarayıcı uzantıları
+  // API, Firebase, Auth — asla cache'leme (donma ve bayat oturum önlenir)
   if (
     url.pathname.startsWith('/@') ||
     url.pathname.startsWith('/src/') ||
@@ -56,6 +51,12 @@ self.addEventListener('fetch', (event) => {
     url.pathname.includes('/socket') ||
     url.pathname.includes('/ws') ||
     url.hostname.includes('football.api-sports.io') ||
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('firebaseio.com') ||
+    url.hostname.includes('firebaseapp.com') ||
+    url.hostname.includes('cloudfunctions.net') ||
+    url.hostname.includes('gstatic.com') ||
+    url.hostname.includes('google.com') ||
     url.protocol === 'chrome-extension:' ||
     url.protocol === 'moz-extension:'
   ) {
