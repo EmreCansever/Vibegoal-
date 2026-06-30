@@ -7,6 +7,7 @@
 ═══════════════════════════════════════════════════════════════ */
 
 import {
+  auth,
   isFirebaseConfigured,
   registerWithEmail,
   loginWithEmail,
@@ -17,6 +18,7 @@ import {
   mapFirebaseUserToSession,
   upsertUserDocument,
   patchUserDocument,
+  waitForAuthReady,
 } from './firebase';
 
 const LS_KEYS = {
@@ -100,7 +102,9 @@ export const authService = {
       return () => {};
     }
 
-    return subscribeAuthState((firebaseUser) => {
+    await waitForAuthReady();
+
+    const applyFirebaseUser = (firebaseUser) => {
       if (!firebaseUser) {
         cacheSessionUser(null);
         callback(null);
@@ -114,6 +118,12 @@ export const authService = {
       syncUserProfileInBackground(firebaseUser).then((doc) => {
         if (doc) profileToCache(firebaseUser.uid, doc);
       });
+    };
+
+    applyFirebaseUser(auth?.currentUser ?? null);
+
+    return subscribeAuthState((firebaseUser) => {
+      applyFirebaseUser(firebaseUser);
     });
   },
 
@@ -173,6 +183,7 @@ export const authService = {
     if (isFirebaseConfigured) {
       try {
         const firebaseUser = await loginWithEmail({ email, password });
+        await waitForAuthReady();
         const sessionUser = mergeSessionWithLocalProfile(sessionUserFromAuth(firebaseUser));
         cacheSessionUser(sessionUser);
 

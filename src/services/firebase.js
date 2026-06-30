@@ -67,6 +67,25 @@ if (hasConfig) {
 
 export { auth, db, hasConfig as isFirebaseConfigured };
 
+/** Firebase Auth oturumu tamamen yuklenene kadar bekler */
+export async function waitForAuthReady() {
+  if (!auth) return;
+  await ensureAuthPersistence();
+  if (typeof auth.authStateReady === 'function') {
+    await auth.authStateReady();
+  }
+}
+
+/** Gecerli Firebase Auth uid — yoksa null */
+export function getFirebaseAuthUid() {
+  return auth?.currentUser?.uid ?? null;
+}
+
+/** Firebase uid oncelikli; yedek olarak verilen uid */
+export function resolveAuthUid(fallbackUid) {
+  return getFirebaseAuthUid() || fallbackUid || null;
+}
+
 /** Tarayıcıda oturumun kalıcı kalmasını garanti eder */
 export function ensureAuthPersistence() {
   if (!auth) return Promise.resolve();
