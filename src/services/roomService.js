@@ -161,132 +161,98 @@ async function confirmServerDocument(docRef, label = 'Kayit') {
 }
 
 /** Auth hazir olunca Firestore dinleyicisini baglar; cikis/giris sonrasi yeniden baglanir */
-function subscribeRoomsQuery(fallbackUid, buildQuery, callback, errorLabel) {
+function watchFirestoreRooms({
+  fallbackUid,
+  buildQuery,
+  onData,
+  label,
+  requireMemberUid = false,
+}) {
   if (!isFirebaseConfigured || !db) {
-    callback([]);
+    onData([]);
     return () => {};
   }
 
   let unsubSnapshot = () => {};
   let cancelled = false;
+  let generation = 0;
+  let lastAuthUid = null;
 
-  const attach = async () => {
+  const emit = (rooms) => {
+    if (!cancelled) onData(Array.isArray(rooms) ? rooms : []);
+  };
+
+  const attach = async (authUid) => {
+    const gen = ++generation;
     unsubSnapshot();
     unsubSnapshot = () => {};
-    if (cancelled) return;
 
     try {
       await waitForAuthReady();
     } catch (err) {
-      console.warn(`${errorLabel}: auth hazir degil`, err);
+      console.warn(`${label}: auth hazir degil`, err);
+      emit([]);
       return;
     }
-    if (cancelled) return;
-
-    const queryUid = resolveAuthUid(fallbackUid);
-    if (!queryUid) {
-      callback([]);
-      return;
-    }
-
-    if (auth?.currentUser?.uid && fallbackUid && auth.currentUser.uid !== fallbackUid) {
-      console.warn(`${errorLabel}: uid uyusmazligi duzeltildi`, {
-        cached: fallbackUid,
-        firebase: auth.currentUser.uid,
-      });
-    }
-
-    const q = buildQuery(queryUid);
-    unsubSnapshot = onSnapshot(
-      q,
-      (snap) => {
-        const list = snap.docs
-          .map((d) => mapRoomDoc(d, queryUid))
-          .filter(Boolean);
-        callback(normalizeRoomList(list));
-      },
-      (err) => {
-        console.error(`${errorLabel}:`, err);
-        if (err?.code !== 'permission-denied') {
-          callback([]);
-        }
-      },
-    );
-  };
-
-  let unsubAuth = () => {};
-  attach();
-  if (auth) {
-    unsubAuth = onAuthStateChanged(auth, () => {
-      attach();
-    });
-  }
-
-  return () => {
-    cancelled = true;
-    unsubSnapshot();
-    unsubAuth();
-  };
-}
-
-/** Herkese acik odalar — yalnizca giris yapmis kullanicilar okuyabilir */
-function subscribePublicRoomsQuery(mapUid, callback) {
-  if (!isFirebaseConfigured || !db) {
-    callback([]);
-    return () => {};
-  }
-
-  let unsubSnapshot = () => {};
-  let cancelled = false;
-
-  const attach = async () => {
-    unsubSnapshot();
-    unsubSnapshot = () => {};
-    if (cancelled) return;
-
-    try {
-      await waitForAuthReady();
-    } catch (err) {
-      console.warn('Genel oda dinleme: auth hazir degil', err);
-      return;
-    }
-    if (cancelled) return;
+    if (cancelled || gen !== generation) return;
 
     if (!auth?.currentUser) {
-      callback([]);
+      emit([]);
       return;
     }
 
-    const queryUid = resolveAuthUid(mapUid);
-    const q = query(collection(db, 'rooms'), where('isPublic', '==', true));
+    const mapUid = authUid || resolveAuthUid(fallbackUid) || auth.currentUser.uid;
+    if (requireMemberUid && !mapUid) {
+      emit([]);
+      return;
+    }
+
+    const q = buildQuery(mapUid);
+
+    getDocsFromServer(q)
+      .then((snap) => {
+        if (cancelled || gen !== generation) return;
+        const list = snap.docs
+          .map((d) => mapRoomDoc(d, mapUid))
+          .filter(Boolean);
+        emit(normalizeRoomList(list));
+      })
+      .catch((err) => {
+        console.warn(`${label}: sunucu bootstrap`, err);
+        emit([]);
+      });
 
     unsubSnapshot = onSnapshot(
       q,
       (snap) => {
+        if (cancelled || gen !== generation) return;
         const list = snap.docs
-          .map((d) => mapRoomDoc(d, queryUid))
+          .map((d) => mapRoomDoc(d, mapUid))
           .filter(Boolean);
-        callback(normalizeRoomList(list));
+        emit(normalizeRoomList(list));
       },
       (err) => {
-        console.error('Genel oda dinleme hatasi:', err);
-        if (err?.code !== 'permission-denied') {
-          callback([]);
-        }
+        console.error(`${label}:`, err);
+        emit([]);
       },
     );
   };
 
   let unsubAuth = () => {};
-  attach();
   if (auth) {
-    unsubAuth = onAuthStateChanged(auth, () => {
-      attach();
+    unsubAuth = onAuthStateChanged(auth, (user) => {
+      const uid = user?.uid ?? null;
+      if (uid === lastAuthUid) return;
+      lastAuthUid = uid;
+      attach(uid);
     });
+  } else {
+    attach(null);
   }
 
   return () => {
     cancelled = true;
+    generation += 1;
     unsubSnapshot();
     unsubAuth();
   };
@@ -305,15 +271,16 @@ export const roomService = {
       return () => {};
     }
 
-    return subscribeRoomsQuery(
-      uid,
-      (queryUid) => query(
+    return watchFirestoreRooms({
+      fallbackUid: uid,
+      requireMemberUid: true,
+      buildQuery: (queryUid) => query(
         collection(db, 'rooms'),
         where('memberIds', 'array-contains', queryUid),
       ),
-      callback,
-      'Oda dinleme hatasi',
-    );
+      onData: callback,
+      label: 'Oda dinleme',
+    });
   },
 
   /**
@@ -321,7 +288,13 @@ export const roomService = {
    * @returns {() => void} unsubscribe
    */
   subscribePublicRooms(callback, uid = null) {
-    return subscribePublicRoomsQuery(uid, callback);
+    return watchFirestoreRooms({
+      fallbackUid: uid,
+      requireMemberUid: false,
+      buildQuery: () => query(collection(db, 'rooms'), where('isPublic', '==', true)),
+      onData: callback,
+      label: 'Genel oda dinleme',
+    });
   },
 
   /**

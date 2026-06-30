@@ -583,7 +583,11 @@ function DiscoverTab({ theme, publicRooms = [], onJoinRoom, loading }) {
           <div style={{ textAlign: 'center', padding: '40px 20px', color: '#555' }}>
             <div style={{ fontSize: 42, marginBottom: 12 }}>🏟️</div>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Henüz açık keşfet odası yok</div>
-            <div style={{ fontSize: 11 }}>Yeni bir grup oluştururken "Herkese Açık" seçeneğini aktif et!</div>
+            <div style={{ fontSize: 11, lineHeight: 1.6 }}>
+              Grup oluştururken &quot;Herkese Açık Keşfet Odası&quot; seçeneği açık olmalı.
+              <br />
+              Davet kodu ile gizli odalara da katılabilirsin.
+            </div>
           </div>
         ) : (
           filtered.map((r, i) => (
@@ -1059,7 +1063,8 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
 
   const [myRooms, setMyRooms] = useState([])
   const [publicRooms, setPublicRooms] = useState([])
-  const [roomsLoading, setRoomsLoading] = useState(true)
+  const [myRoomsLoading, setMyRoomsLoading] = useState(true)
+  const [publicRoomsLoading, setPublicRoomsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('mine')
   const [showCreate, setShowCreate] = useState(false)
   const [toast, setToast] = useState(null)
@@ -1083,31 +1088,40 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
     let unsubPublic = () => {}
     let cancelled = false
 
-    setRoomsLoading(true)
+    setMyRoomsLoading(true)
+    setPublicRoomsLoading(true)
 
     const handleUserRooms = (rooms) => {
       if (cancelled) return
       setMyRooms(Array.isArray(rooms) ? rooms : [])
-      setRoomsLoading(false)
+      setMyRoomsLoading(false)
     }
 
     const handlePublicRooms = (rooms) => {
       if (cancelled) return
       setPublicRooms(Array.isArray(rooms) ? rooms : [])
+      setPublicRoomsLoading(false)
     }
+
+    const loadingTimeout = setTimeout(() => {
+      if (cancelled) return
+      setMyRoomsLoading(false)
+      setPublicRoomsLoading(false)
+    }, 12000)
 
     const uid = currentUser?.uid
     if (uid) {
       unsubUser = roomService.subscribeUserRooms(uid, handleUserRooms)
     } else {
       setMyRooms([])
-      setRoomsLoading(false)
+      setMyRoomsLoading(false)
     }
 
     unsubPublic = roomService.subscribePublicRooms(handlePublicRooms, uid)
 
     return () => {
       cancelled = true
+      clearTimeout(loadingTimeout)
       unsubUser()
       unsubPublic()
     }
@@ -1328,10 +1342,17 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
               onLeave={handleLeaveRoom}
               onDelete={handleDeleteRoom}
               theme={t}
-              loading={roomsLoading}
+              loading={myRoomsLoading}
             />
           )
-          : <DiscoverTab theme={t} publicRooms={publicRooms} onJoinRoom={handleJoined} loading={roomsLoading} />
+          : (
+            <DiscoverTab
+              theme={t}
+              publicRooms={publicRooms}
+              onJoinRoom={handleJoined}
+              loading={publicRoomsLoading}
+            />
+          )
         }
       </div>
 
