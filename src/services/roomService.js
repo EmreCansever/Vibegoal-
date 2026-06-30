@@ -45,14 +45,14 @@ function mapRoomDoc(docSnap, uid) {
   }
   if (!data || typeof data !== 'object') return null;
 
-  const members = data.members ?? (Array.isArray(data.memberIds) ? data.memberIds.length : 0);
+  const memberIds = Array.isArray(data.memberIds) ? data.memberIds : [];
 
   return {
     id: docSnap.id,
     name: data.name || '',
     league: data.league || '',
     leagueId: data.leagueId || 'wc2026',
-    members,
+    members: Number(data.members) || memberIds.length || 0,
     maxMembers: data.maxMembers ?? 20,
     totalPoints: Number(data.totalPoints) || 0,
     avatar: data.avatar || '✨',
@@ -63,6 +63,7 @@ function mapRoomDoc(docSnap, uid) {
     inviteCode: data.inviteCode || '',
     ownerId: data.ownerId || '',
     isAdmin: data.ownerId === uid,
+    isMember: uid ? memberIds.includes(uid) : false,
     myRank: Number(data.myRank) || 1,
     hot: !!data.hot,
     requested: false,
@@ -89,6 +90,11 @@ export function normalizeRoomList(rooms) {
         description: room.description ?? '',
         lastActivity: room.lastActivity ?? '',
         myRank: Number(room.myRank) || 1,
+        isPublic: !!room.isPublic,
+        inviteCode: room.inviteCode ?? '',
+        ownerId: room.ownerId ?? '',
+        isAdmin: !!room.isAdmin,
+        isMember: !!room.isMember,
       };
     })
     .filter(Boolean);
@@ -147,7 +153,7 @@ export const roomService = {
    * Herkese açık odaları gerçek zamanlı dinler
    * @returns {() => void} unsubscribe
    */
-  subscribePublicRooms(callback) {
+  subscribePublicRooms(callback, uid = null) {
     if (!this.isAvailable()) {
       callback([]);
       return () => {};
@@ -159,7 +165,7 @@ export const roomService = {
       q,
       (snap) => {
         const list = snap.docs
-          .map((d) => mapRoomDoc(d, null))
+          .map((d) => mapRoomDoc(d, uid))
           .filter(Boolean);
         callback(normalizeRoomList(list));
       },
@@ -236,6 +242,7 @@ export const roomService = {
       lastActivity: 'şimdi',
       inviteCode,
       isAdmin: true,
+      isMember: true,
       myRank: 1,
       hot: false,
       requested: false,
@@ -302,6 +309,27 @@ export const roomService = {
 
     const roomDoc = snap.docs[0];
     return this.joinRoom(roomDoc.id, uid);
+  },
+
+  /**
+   * Grubu kalıcı olarak siler — yalnızca oda sahibi
+   */
+  async deleteRoom(roomId, uid) {
+    if (!this.isAvailable()) {
+      throw new Error('Firebase yapılandırılmamış.');
+    }
+    if (!uid) throw new Error('Oturum açmanız gerekiyor.');
+
+    const roomRef = doc(db, 'rooms', roomId);
+    const snap = await getDoc(roomRef);
+    if (!snap.exists()) throw new Error('Oda bulunamadı.');
+
+    const data = snap.data();
+    if (data.ownerId !== uid) {
+      throw new Error('Yalnızca grup admini grubu silebilir.');
+    }
+
+    await deleteDoc(roomRef);
   },
 
   /**
