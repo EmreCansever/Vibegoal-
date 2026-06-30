@@ -10,12 +10,10 @@
 }
 
 html {
-  /* Mobil klavye açılırken sayfa zıplamasını önle */
   height: 100%;
-  height: 100dvh;
-  /* iOS overscroll bounce engeli */
+  height: -webkit-fill-available;
+  min-height: 100svh;
   overscroll-behavior: none;
-  /* Yumuşak kaydırma (anchor / programatik scroll) */
   scroll-behavior: smooth;
 }
 
@@ -31,43 +29,66 @@ html, body {
 }
 
 body {
-  height: 100%;
-  height: 100dvh;
+  min-height: 100%;
+  min-height: 100svh;
+  min-height: -webkit-fill-available;
   overscroll-behavior: none;
-  /* iOS mobil zoom'u önle (input focus'ta) */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  /* Hızlı dokunuş — 300ms gecikmeyi kaldır */
   touch-action: manipulation;
 }
 
 #root {
   width: 100%;
-  height: 100%;
-  height: 100dvh;
+  min-height: 100%;
+  min-height: 100svh;
+  min-height: -webkit-fill-available;
+  height: 100svh;
+  height: -webkit-fill-available;
   overflow-x: hidden;
   max-width: 100%;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
-/* Uygulama kabuğu — tüm ekranlar mobilde taşmasın */
+/* Uygulama kabuğu — safe-area + mobil viewport düzeltmesi */
 .vg-app-shell {
   width: 100%;
   max-width: min(600px, 100%);
   margin: 0 auto;
   overflow-x: hidden;
   position: relative;
+  flex: 1;
+  min-height: 100svh;
+  min-height: -webkit-fill-available;
+  height: 100svh;
+  height: -webkit-fill-available;
+  box-sizing: border-box;
 }
 
-/* Alt navigasyon — sabit, tam genişlik, safe-area */
+/* Üst bar — notch / status bar altında kalmaması için */
+.vg-top-bar {
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-bottom: 12px;
+}
+
+/* Alt navigasyon — flex içinde ekranın dibine yapışık (iOS fixed kayması yok) */
 .vg-bottom-nav {
+  position: relative;
+  flex-shrink: 0;
   width: 100%;
   max-width: min(600px, 100%);
-  left: 50%;
-  transform: translateX(-50%);
+  margin-left: auto;
+  margin-right: auto;
+  transform: none;
   box-sizing: border-box;
+  padding-top: 8px;
   padding-left: max(6px, env(safe-area-inset-left, 0px));
   padding-right: max(6px, env(safe-area-inset-right, 0px));
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
 }
 
 /* Uzun kelimeler / URL taşmasını engelle */

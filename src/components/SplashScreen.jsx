@@ -31,6 +31,8 @@ export default function SplashScreen({ onFinish }) {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         gap: 22,
         fontFamily: "'Inter', 'Outfit', sans-serif",
         opacity: leaving ? 0 : 1,

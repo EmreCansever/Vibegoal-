@@ -170,26 +170,27 @@ export default function AuthScreen({ onAuth }) {
   }
 
   // Handle Log In
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault()
     if (!email.trim() || !password.trim()) {
       return triggerError('Lütfen tüm zorunlu alanları doldurunuz.')
     }
-    
+
     setLoading(true)
-    setTimeout(() => {
-      const res = authService.login({ email, password })
-      setLoading(false)
+    try {
+      const res = await authService.login({ email, password })
       if (res.success) {
         onAuth(res.user)
       } else {
         triggerError(getAuthErrorMessage(res.error))
       }
-    }, 700)
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Handle Registration
-  const handleRegisterSubmit = (e) => {
+  const handleRegisterSubmit = async (e) => {
     e.preventDefault()
     if (!username.trim() || !email.trim() || !password.trim()) {
       return triggerError('Lütfen tüm zorunlu alanları doldurunuz.')
@@ -199,15 +200,16 @@ export default function AuthScreen({ onAuth }) {
     }
 
     setLoading(true)
-    setTimeout(() => {
-      const res = authService.register({ username, email, password })
-      setLoading(false)
+    try {
+      const res = await authService.register({ username, email, password })
       if (res.success) {
         onAuth(res.user)
       } else {
         triggerError(getAuthErrorMessage(res.error))
       }
-    }, 850)
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Handle Firebase Real Social Sign Ins (Google / Apple)
@@ -224,7 +226,7 @@ export default function AuthScreen({ onAuth }) {
         throw new Error('Geçersiz giriş yöntemi.')
       }
 
-      const res = authService.socialLogin(firebaseUser)
+      const res = await authService.socialLogin(firebaseUser)
       if (res.success) {
         onAuth(res.user)
       } else {
@@ -240,13 +242,14 @@ export default function AuthScreen({ onAuth }) {
 
   return (
     <div style={{
-      minHeight: '100dvh',
+      minHeight: '100svh',
       width: '100%',
       background: '#18181b',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       padding: '24px 16px',
+      paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))',
       paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))',
       position: 'relative',
       fontFamily: "'Inter', sans-serif",

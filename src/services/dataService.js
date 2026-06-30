@@ -1,11 +1,22 @@
 /* ═══════════════════════════════════════════════════════════════
    VibeGoal — Soyutlanmış Veri Servis Katmanı
-   LocalStorage Bridge — Firebase'e geçişte sadece bu dosya değişir.
+   Firebase Auth + Firestore birincil; yapılandırma yoksa localStorage yedek.
 
    authService  → Giriş / Kayıt / Çıkış / Oturum kontrolü
    dbService    → Kullanıcı profili, puanlar, tahminler CRUD
-   sessionService → Aktif oturum yönetimi
 ═══════════════════════════════════════════════════════════════ */
+
+import {
+  isFirebaseConfigured,
+  registerWithEmail,
+  loginWithEmail,
+  firebaseSignOut,
+  subscribeAuthState,
+  mapFirebaseUserToSession,
+  upsertUserDocument,
+  fetchUserDocument,
+  patchUserDocument,
+} from './firebase';
 
 const LS_KEYS = {
   USERS:        'vg_users',
@@ -13,29 +24,40 @@ const LS_KEYS = {
   USER_PROFILE: (uid) => `vg_profile_${uid}`,
   USER_PREDS:   (uid) => `vg_predictions_${uid}`,
   USER_ANSWERS: (uid) => `vg_answers_${uid}`,
-}
+};
 
-/* ── Yardımcı fonksiyonlar ─────────────────────────────────── */
 function lsGet(key, fallback = null) {
   try {
-    const val = localStorage.getItem(key)
-    return val ? JSON.parse(val) : fallback
+    const val = localStorage.getItem(key);
+    return val ? JSON.parse(val) : fallback;
   } catch {
-    return fallback
+    return fallback;
   }
 }
+
 function lsSet(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* quota */ }
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota */ }
 }
+
 function lsDel(key) {
-  try { localStorage.removeItem(key) } catch { /* ignore */ }
+  try { localStorage.removeItem(key); } catch { /* ignore */ }
 }
+
 function genUid() {
-  return `uid_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+  return `uid_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
+
 function hashPassword(pw) {
-  // Basit obfuscation — gerçek projede server-side hashing yapılır
-  return btoa(pw + '_vg_salt_2026')
+  return btoa(pw + '_vg_salt_2026');
+}
+
+function cacheSessionUser(user) {
+  if (user) lsSet(LS_KEYS.CURRENT_USER, user);
+  else lsDel(LS_KEYS.CURRENT_USER);
+}
+
+function profileToCache(uid, profile) {
+  if (profile) lsSet(LS_KEYS.USER_PROFILE(uid), profile);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -44,232 +66,280 @@ function hashPassword(pw) {
 export const authService = {
 
   /**
-   * Kullanıcı kaydı
-   * @returns {{ success, user, error }}
+   * Firebase oturum dinleyicisini başlatır
+   * @returns {Promise<() => void>}
    */
-  register({ username, email, password }) {
-    const users = lsGet(LS_KEYS.USERS, {})
+  async initSessionListener(callback) {
+    if (!isFirebaseConfigured) {
+      callback(this.getCurrentUser());
+      return () => {};
+    }
 
-    // E-posta kontrolü
-    const emailExists = Object.values(users).some(u => u.email === email.toLowerCase().trim())
-    if (emailExists) return { success: false, error: 'Bu e-posta zaten kayıtlı.' }
+    return subscribeAuthState(async (firebaseUser) => {
+      if (!firebaseUser) {
+        cacheSessionUser(null);
+        callback(null);
+        return;
+      }
+      try {
+        const sessionUser = await mapFirebaseUserToSession(firebaseUser);
+        cacheSessionUser(sessionUser);
+        if (sessionUser?.uid) {
+          const doc = await fetchUserDocument(sessionUser.uid);
+          if (doc) profileToCache(sessionUser.uid, doc);
+        }
+        callback(sessionUser);
+      } catch (err) {
+        console.error('Oturum senkronizasyon hatası:', err);
+        callback(this.getCurrentUser());
+      }
+    });
+  },
 
-    // Kullanıcı adı kontrolü
-    const uNameExists = Object.values(users).some(
-      u => u.username.toLowerCase() === username.toLowerCase().trim()
-    )
-    if (uNameExists) return { success: false, error: 'Bu kullanıcı adı alınmış.' }
+  /**
+   * Kullanıcı kaydı — Firebase Auth + Firestore users/{uid}
+   */
+  async register({ username, email, password }) {
+    if (isFirebaseConfigured) {
+      try {
+        const firebaseUser = await registerWithEmail({ email, password, username });
+        const sessionUser = await mapFirebaseUserToSession(firebaseUser);
+        cacheSessionUser(sessionUser);
+        dbService.initProfile(sessionUser.uid, sessionUser.username);
+        return { success: true, user: sessionUser };
+      } catch (err) {
+        return { success: false, error: err };
+      }
+    }
 
-    const uid = genUid()
+    return this._localRegister({ username, email, password });
+  },
+
+  _localRegister({ username, email, password }) {
+    const users = lsGet(LS_KEYS.USERS, {});
+    const normalizedEmail = email.toLowerCase().trim();
+
+    if (Object.values(users).some((u) => u.email === normalizedEmail)) {
+      return { success: false, error: 'Bu e-posta zaten kayıtlı.' };
+    }
+    if (Object.values(users).some((u) => u.username.toLowerCase() === username.toLowerCase().trim())) {
+      return { success: false, error: 'Bu kullanıcı adı alınmış.' };
+    }
+
+    const uid = genUid();
     const user = {
       uid,
       username: username.trim(),
-      email:    email.toLowerCase().trim(),
+      email: normalizedEmail,
       password: hashPassword(password),
       createdAt: Date.now(),
       avatar: '',
+    };
+
+    users[uid] = user;
+    lsSet(LS_KEYS.USERS, users);
+    dbService.initProfile(uid, username.trim());
+
+    const sessionUser = { uid, username: user.username, email: user.email, avatar: user.avatar };
+    cacheSessionUser(sessionUser);
+    return { success: true, user: sessionUser };
+  },
+
+  /**
+   * E-posta + şifre ile giriş
+   */
+  async login({ email, password }) {
+    if (isFirebaseConfigured) {
+      try {
+        const firebaseUser = await loginWithEmail({ email, password });
+        const sessionUser = await mapFirebaseUserToSession(firebaseUser);
+        cacheSessionUser(sessionUser);
+        const doc = await fetchUserDocument(sessionUser.uid);
+        if (doc) profileToCache(sessionUser.uid, doc);
+        else dbService.initProfile(sessionUser.uid, sessionUser.username);
+        return { success: true, user: sessionUser };
+      } catch (err) {
+        return { success: false, error: err };
+      }
     }
 
-    users[uid] = user
-    lsSet(LS_KEYS.USERS, users)
-
-    // Varsayılan profil oluştur
-    dbService.initProfile(uid, username.trim())
-
-    // Oturumu başlat
-    const sessionUser = { uid, username: user.username, email: user.email, avatar: user.avatar }
-    lsSet(LS_KEYS.CURRENT_USER, sessionUser)
-
-    return { success: true, user: sessionUser }
+    return this._localLogin({ email, password });
   },
 
-  /**
-   * E-posta + Şifre ile giriş
-   * @returns {{ success, user, error }}
-   */
-  login({ email, password }) {
-    const users = lsGet(LS_KEYS.USERS, {})
+  _localLogin({ email, password }) {
+    const users = lsGet(LS_KEYS.USERS, {});
     const user = Object.values(users).find(
-      u => u.email === email.toLowerCase().trim() && u.password === hashPassword(password)
-    )
+      (u) => u.email === email.toLowerCase().trim() && u.password === hashPassword(password),
+    );
 
-    if (!user) return { success: false, error: 'E-posta veya şifre hatalı.' }
+    if (!user) return { success: false, error: 'E-posta veya şifre hatalı.' };
 
-    const sessionUser = { uid: user.uid, username: user.username, email: user.email, avatar: user.avatar }
-    lsSet(LS_KEYS.CURRENT_USER, sessionUser)
-
-    return { success: true, user: sessionUser }
+    const sessionUser = { uid: user.uid, username: user.username, email: user.email, avatar: user.avatar };
+    cacheSessionUser(sessionUser);
+    return { success: true, user: sessionUser };
   },
 
   /**
-   * Google / Apple sosyal giriş — Firebase kullanıcısı ile sisteme bağlar
-   * @param {object} firebaseUser
-   * @returns {{ success, user }}
+   * Google / Apple sosyal giriş
    */
-  socialLogin(firebaseUser) {
-    if (!firebaseUser) return { success: false, error: 'Kullanıcı bilgileri bulunamadı.' }
+  async socialLogin(firebaseUser) {
+    if (!firebaseUser) return { success: false, error: 'Kullanıcı bilgileri bulunamadı.' };
+
+    if (isFirebaseConfigured) {
+      await upsertUserDocument(firebaseUser);
+      const sessionUser = await mapFirebaseUserToSession(firebaseUser);
+      cacheSessionUser(sessionUser);
+      dbService.initProfile(sessionUser.uid, sessionUser.username);
+      if (sessionUser.avatar) {
+        dbService.updateProfile(sessionUser.uid, { avatar: sessionUser.avatar });
+      }
+      return { success: true, user: sessionUser };
+    }
 
     const profile = {
-      uid:      firebaseUser.uid,
+      uid: firebaseUser.uid,
       username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Kullanıcı',
-      email:    firebaseUser.email || '',
-      avatar:   firebaseUser.photoURL || '',
-    }
+      email: firebaseUser.email || '',
+      avatar: firebaseUser.photoURL || '',
+    };
 
-    // Eğer daha önce kayıtlı değilse oluştur
-    const users = lsGet(LS_KEYS.USERS, {})
+    const users = lsGet(LS_KEYS.USERS, {});
     if (!users[profile.uid]) {
-      users[profile.uid] = { ...profile, password: '', createdAt: Date.now() }
-      lsSet(LS_KEYS.USERS, users)
-      dbService.initProfile(profile.uid, profile.username)
-      if (profile.avatar) {
-        dbService.updateProfile(profile.uid, { avatar: profile.avatar })
-      }
-    } else {
-      const localProfile = dbService.getProfile(profile.uid)
-      if (localProfile) {
-        dbService.updateProfile(profile.uid, {
-          username: profile.username || localProfile.username,
-          avatar: profile.avatar || localProfile.avatar
-        })
-      }
+      users[profile.uid] = { ...profile, password: '', createdAt: Date.now() };
+      lsSet(LS_KEYS.USERS, users);
+      dbService.initProfile(profile.uid, profile.username);
+      if (profile.avatar) dbService.updateProfile(profile.uid, { avatar: profile.avatar });
     }
 
-    lsSet(LS_KEYS.CURRENT_USER, profile)
-    return { success: true, user: profile }
+    cacheSessionUser(profile);
+    return { success: true, user: profile };
   },
 
   /**
-   * Oturumu kapat
+   * Oturumu kapat — Firebase Auth oturumu da kapatılır
    */
-  logout() {
-    lsDel(LS_KEYS.CURRENT_USER)
+  async logout() {
+    cacheSessionUser(null);
+    if (isFirebaseConfigured) {
+      try {
+        await firebaseSignOut();
+      } catch (err) {
+        console.warn('Firebase çıkış hatası:', err);
+      }
+    }
   },
 
-  /**
-   * Aktif oturumu getir — sayfa yenilemede bile çalışır
-   * @returns {user | null}
-   */
   getCurrentUser() {
-    return lsGet(LS_KEYS.CURRENT_USER, null)
+    return lsGet(LS_KEYS.CURRENT_USER, null);
   },
 
-  /**
-   * Hesabı siler ve oturumu kapatır
-   */
   deleteAccount(uid) {
-    dbService.deleteProfile(uid)
-    this.logout()
+    dbService.deleteProfile(uid);
+    cacheSessionUser(null);
   },
-}
+};
 
 /* ═══════════════════════════════════════════════════════════════
    dbService
 ═══════════════════════════════════════════════════════════════ */
 export const dbService = {
 
-  /**
-   * Yeni kullanıcı için varsayılan profil oluştur
-   */
   initProfile(uid, username) {
-    const existing = lsGet(LS_KEYS.USER_PROFILE(uid))
-    if (existing) return existing
+    const existing = lsGet(LS_KEYS.USER_PROFILE(uid));
+    if (existing) {
+      if (isFirebaseConfigured) {
+        patchUserDocument(uid, { username: existing.username || username }).catch(() => {});
+      }
+      return existing;
+    }
 
     const profile = {
       uid,
       username,
       totalPoints: 0,
-      correct:     0,
-      total:       0,
-      badge:       '',
-      avatar:      '',
-      rank:        1,
-      createdAt:   Date.now(),
-      updatedAt:   Date.now(),
+      correct: 0,
+      total: 0,
+      badge: '',
+      avatar: '',
+      rank: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    lsSet(LS_KEYS.USER_PROFILE(uid), profile);
+
+    if (isFirebaseConfigured) {
+      patchUserDocument(uid, {
+        username,
+        totalPoints: 0,
+        correct: 0,
+        total: 0,
+        badge: '',
+        avatar: '',
+      }).catch(() => {});
     }
-    lsSet(LS_KEYS.USER_PROFILE(uid), profile)
-    return profile
+
+    return profile;
   },
 
-
-  /**
-   * Kullanıcı profilini getir
-   * @returns {profile | null}
-   */
   getProfile(uid) {
-    return lsGet(LS_KEYS.USER_PROFILE(uid), null)
+    return lsGet(LS_KEYS.USER_PROFILE(uid), null);
   },
 
-  /**
-   * Profili güncelle (kısmi)
-   */
   updateProfile(uid, updates) {
-    const profile = this.getProfile(uid) || {}
-    const updated = { ...profile, ...updates, uid, updatedAt: Date.now() }
-    lsSet(LS_KEYS.USER_PROFILE(uid), updated)
-    return updated
+    const profile = this.getProfile(uid) || {};
+    const updated = { ...profile, ...updates, uid, updatedAt: Date.now() };
+    lsSet(LS_KEYS.USER_PROFILE(uid), updated);
+
+    if (isFirebaseConfigured) {
+      const { uid: _u, createdAt, ...firestoreFields } = updated;
+      patchUserDocument(uid, firestoreFields).catch(() => {});
+    }
+
+    return updated;
   },
 
-  /**
-   * Puan ekle
-   */
   addPoints(uid, delta, correctDelta = 0) {
-    const profile = this.getProfile(uid) || {}
+    const profile = this.getProfile(uid) || {};
     return this.updateProfile(uid, {
       totalPoints: (profile.totalPoints || 0) + delta,
-      correct:     (profile.correct     || 0) + correctDelta,
-      total:       (profile.total       || 0) + (correctDelta > 0 || delta > 0 ? 1 : 0),
-    })
+      correct: (profile.correct || 0) + correctDelta,
+      total: (profile.total || 0) + (correctDelta > 0 || delta > 0 ? 1 : 0),
+    });
   },
 
-  /**
-   * Kullanıcının tüm tahminlerini kaydet
-   */
   savePredictions(uid, predictions) {
-    lsSet(LS_KEYS.USER_PREDS(uid), { ...predictions, _updatedAt: Date.now() })
+    lsSet(LS_KEYS.USER_PREDS(uid), { ...predictions, _updatedAt: Date.now() });
   },
 
-  /**
-   * Tahminleri getir
-   */
   getPredictions(uid) {
-    const { _updatedAt: _, ...preds } = lsGet(LS_KEYS.USER_PREDS(uid), {})
-    return preds
+    const { _updatedAt: _, ...preds } = lsGet(LS_KEYS.USER_PREDS(uid), {});
+    return preds;
   },
 
-  /**
-   * Anlık soru cevaplarını kaydet
-   */
   saveAnswers(uid, answers) {
-    lsSet(LS_KEYS.USER_ANSWERS(uid), { ...answers, _updatedAt: Date.now() })
+    lsSet(LS_KEYS.USER_ANSWERS(uid), { ...answers, _updatedAt: Date.now() });
   },
 
-  /**
-   * Anlık soru cevaplarını getir
-   */
   getAnswers(uid) {
-    const { _updatedAt: _, ...answers } = lsGet(LS_KEYS.USER_ANSWERS(uid), {})
-    return answers
+    const { _updatedAt: _, ...answers } = lsGet(LS_KEYS.USER_ANSWERS(uid), {});
+    return answers;
   },
 
-  /**
-   * Kullanıcı verilerini LocalStorage'dan siler
-   */
   deleteProfile(uid) {
-    lsDel(LS_KEYS.USER_PROFILE(uid))
-    lsDel(LS_KEYS.USER_PREDS(uid))
-    lsDel(LS_KEYS.USER_ANSWERS(uid))
+    lsDel(LS_KEYS.USER_PROFILE(uid));
+    lsDel(LS_KEYS.USER_PREDS(uid));
+    lsDel(LS_KEYS.USER_ANSWERS(uid));
 
-    // Kullanıcı listesinden çıkar
-    const users = lsGet(LS_KEYS.USERS, {})
+    const users = lsGet(LS_KEYS.USERS, {});
     if (users[uid]) {
-      delete users[uid]
-      lsSet(LS_KEYS.USERS, users)
+      delete users[uid];
+      lsSet(LS_KEYS.USERS, users);
     }
 
-    // Ekstra kullanıcıya ait profile, predictions, answers ve calculate cache'leri temizle
-    lsDel(`vg_predict_history_${uid}`)
-    lsDel(`vg_calculated_matches_${uid}`)
-    lsDel(`vg_resolved_questions_${uid}`)
+    lsDel(`vg_predict_history_${uid}`);
+    lsDel(`vg_calculated_matches_${uid}`);
+    lsDel(`vg_resolved_questions_${uid}`);
   },
-}
+};
+
+export { roomService } from './roomService';

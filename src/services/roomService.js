@@ -1,0 +1,248 @@
+/* ═══════════════════════════════════════════════════════════════
+   VibeGoal — Firestore Oda Servisi
+   Odalar kalıcı olarak rooms koleksiyonunda tutulur.
+═══════════════════════════════════════════════════════════════ */
+
+import {
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  where,
+  arrayUnion,
+  arrayRemove,
+  serverTimestamp,
+  limit,
+} from 'firebase/firestore';
+import { db, isFirebaseConfigured } from './firebase';
+
+function mapRoomDoc(docSnap, uid) {
+  const data = docSnap.data();
+  return {
+    id: docSnap.id,
+    name: data.name || '',
+    league: data.league || '',
+    leagueId: data.leagueId || 'wc2026',
+    members: data.members ?? (data.memberIds?.length || 0),
+    maxMembers: data.maxMembers ?? 20,
+    avatar: data.avatar || '✨',
+    color: data.color || '#a3e635',
+    description: data.description || '',
+    lastActivity: data.lastActivity || '',
+    isPublic: !!data.isPublic,
+    inviteCode: data.inviteCode || '',
+    ownerId: data.ownerId || '',
+    isAdmin: data.ownerId === uid,
+    myRank: 1,
+    hot: !!data.hot,
+    requested: false,
+  };
+}
+
+function generateInviteCode(name) {
+  const slug = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8) || 'ODA';
+  const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `VG-${slug}-${suffix}`;
+}
+
+function normalizeInviteCode(raw) {
+  const trimmed = raw.trim().toUpperCase();
+  const match = trimmed.match(/VG[-\w]+/);
+  return match ? match[0].replace(/\s/g, '') : trimmed;
+}
+
+export const roomService = {
+  isAvailable: () => isFirebaseConfigured && !!db,
+
+  /**
+   * Kullanıcının üye olduğu odaları gerçek zamanlı dinler
+   * @returns {() => void} unsubscribe
+   */
+  subscribeUserRooms(uid, callback) {
+    if (!this.isAvailable() || !uid) {
+      callback([]);
+      return () => {};
+    }
+
+    const q = query(
+      collection(db, 'rooms'),
+      where('memberIds', 'array-contains', uid),
+    );
+
+    return onSnapshot(
+      q,
+      (snap) => {
+        callback(snap.docs.map((d) => mapRoomDoc(d, uid)));
+      },
+      (err) => {
+        console.error('Oda dinleme hatası:', err);
+        callback([]);
+      },
+    );
+  },
+
+  /**
+   * Herkese açık odaları gerçek zamanlı dinler
+   * @returns {() => void} unsubscribe
+   */
+  subscribePublicRooms(callback) {
+    if (!this.isAvailable()) {
+      callback([]);
+      return () => {};
+    }
+
+    const q = query(collection(db, 'rooms'), where('isPublic', '==', true));
+
+    return onSnapshot(
+      q,
+      (snap) => {
+        callback(snap.docs.map((d) => mapRoomDoc(d, null)));
+      },
+      (err) => {
+        console.error('Genel oda dinleme hatası:', err);
+        callback([]);
+      },
+    );
+  },
+
+  /**
+   * Yeni oda oluşturur ve Firestore'a yazar
+   */
+  async createRoom({
+    name,
+    leagueId,
+    leagueLabel,
+    isPublic,
+    ownerId,
+    accentColor,
+  }) {
+    if (!this.isAvailable()) {
+      throw new Error('Firebase yapılandırılmamış. Oda oluşturulamıyor.');
+    }
+    if (!ownerId) throw new Error('Oturum açmanız gerekiyor.');
+
+    const roomRef = doc(collection(db, 'rooms'));
+    const inviteCode = generateInviteCode(name);
+
+    const payload = {
+      name: name.trim(),
+      leagueId,
+      league: leagueLabel,
+      isPublic: !!isPublic,
+      ownerId,
+      memberIds: [ownerId],
+      members: 1,
+      maxMembers: 20,
+      inviteCode,
+      avatar: '✨',
+      color: accentColor || '#a3e635',
+      description: isPublic
+        ? 'Kullanıcı tarafından oluşturulan açık tahmin odası.'
+        : '',
+      lastActivity: 'şimdi',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    await setDoc(roomRef, payload);
+    const saved = await getDoc(roomRef);
+    return mapRoomDoc(saved, ownerId);
+  },
+
+  /**
+   * Mevcut odaya katılır (genel keşfet veya davet)
+   */
+  async joinRoom(roomId, uid) {
+    if (!this.isAvailable()) {
+      throw new Error('Firebase yapılandırılmamış.');
+    }
+
+    const roomRef = doc(db, 'rooms', roomId);
+    const snap = await getDoc(roomRef);
+    if (!snap.exists()) throw new Error('Oda bulunamadı.');
+
+    const data = snap.data();
+    const memberIds = data.memberIds || [];
+
+    if (memberIds.includes(uid)) {
+      return mapRoomDoc(snap, uid);
+    }
+
+    if (memberIds.length >= (data.maxMembers ?? 20)) {
+      throw new Error('Oda dolu.');
+    }
+
+    await updateDoc(roomRef, {
+      memberIds: arrayUnion(uid),
+      members: memberIds.length + 1,
+      updatedAt: serverTimestamp(),
+      lastActivity: 'şimdi',
+    });
+
+    const updated = await getDoc(roomRef);
+    return mapRoomDoc(updated, uid);
+  },
+
+  /**
+   * Davet kodu ile odaya katılır
+   */
+  async joinRoomByCode(rawCode, uid) {
+    if (!this.isAvailable()) {
+      throw new Error('Firebase yapılandırılmamış.');
+    }
+
+    const inviteCode = normalizeInviteCode(rawCode);
+    if (!inviteCode.startsWith('VG')) {
+      throw new Error('Geçersiz kod veya link.');
+    }
+
+    const q = query(
+      collection(db, 'rooms'),
+      where('inviteCode', '==', inviteCode),
+      limit(1),
+    );
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      throw new Error('Geçersiz kod veya link.');
+    }
+
+    const roomDoc = snap.docs[0];
+    return this.joinRoom(roomDoc.id, uid);
+  },
+
+  /**
+   * Odadan ayrılır; son üye ayrılırsa oda silinir
+   */
+  async leaveRoom(roomId, uid) {
+    if (!this.isAvailable()) return;
+
+    const roomRef = doc(db, 'rooms', roomId);
+    const snap = await getDoc(roomRef);
+    if (!snap.exists()) return;
+
+    const data = snap.data();
+    const memberIds = (data.memberIds || []).filter((id) => id !== uid);
+    const newCount = memberIds.length;
+
+    if (newCount === 0) {
+      await deleteDoc(roomRef);
+      return;
+    }
+
+    await updateDoc(roomRef, {
+      memberIds: arrayRemove(uid),
+      members: newCount,
+      updatedAt: serverTimestamp(),
+    });
+  },
+};

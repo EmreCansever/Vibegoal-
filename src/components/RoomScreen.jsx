@@ -1,14 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { THEMES, withGlowOpacity } from '../App'
-import { dbService } from '../services/dataService'
+import { roomService } from '../services/dataService'
 
 /* ─────────────────────────────────────────────────
-   MOCK DATA
+   LEAGUE OPTIONS
 ───────────────────────────────────────────────── */
-const MY_ROOMS = []
-
-const PUBLIC_ROOMS = []
-
 const LEAGUE_OPTIONS = [
   { id: 'wc2026', label: '🌍 Dünya Kupası 2026' },
   { id: 'ucl',   label: '⭐ Şampiyonlar Ligi' },
@@ -614,45 +610,23 @@ function CreateRoomModal({ onClose, onCreated, theme }) {
    JOIN BY CODE PANEL
 ───────────────────────────────────────────────── */
 
-function buildRoomFromCode(rawCode) {
-  const normalized = rawCode.trim().toUpperCase()
-  const slug = normalized.replace(/^VG-?/, '').split('-')[0] || 'ODA'
-  const name = slug === 'TRIBUN' ? 'Tribün Grubu' : `Grup ${slug}`
-  return {
-    id: `joined-${normalized}`,
-    name,
-    league: '🌍 Dünya Kupası 2026',
-    leagueId: 'wc2026',
-    members: 1,
-    maxMembers: 20,
-    myRank: 1,
-    totalPoints: 0,
-    avatar: '🔑',
-    color: 'var(--vg-accent)',
-    lastActivity: 'şimdi',
-    isAdmin: false,
-  }
-}
-
-function JoinByCode({ onJoined, theme }) {
+function JoinByCode({ onJoined, theme, currentUser }) {
   const t = theme || THEMES.slate
   const [code, setCode]     = useState('')
   const [status, setStatus] = useState('idle') // idle | loading | success | error
   const inputRef = useRef(null)
 
-  function handleJoin() {
-    if (!code.trim()) return
+  async function handleJoin() {
+    if (!code.trim() || !currentUser?.uid) return
     setStatus('loading')
-    setTimeout(() => {
-      const ok = code.trim().toUpperCase().startsWith('VG')
-      if (ok) {
-        setStatus('success')
-        onJoined && onJoined(buildRoomFromCode(code))
-      } else {
-        setStatus('error')
-        setTimeout(() => setStatus('idle'), 3000)
-      }
-    }, 900)
+    try {
+      const room = await roomService.joinRoomByCode(code, currentUser.uid)
+      setStatus('success')
+      onJoined && onJoined(room)
+    } catch {
+      setStatus('error')
+      setTimeout(() => setStatus('idle'), 3000)
+    }
   }
 
   const borderColor = status === 'success'
@@ -775,61 +749,27 @@ function JoinByCode({ onJoined, theme }) {
    MAIN ROOM SCREEN
 ───────────────────────────────────────────────── */
 
-function filterFakeRooms(rooms) {
-  if (!Array.isArray(rooms)) return []
-  return rooms.filter(r => {
-    const nameLower = (r.name || '').toLowerCase()
-    const idLower = (r.id || '').toLowerCase()
-    return !nameLower.includes('elaz') && 
-           !nameLower.includes('test') && 
-           !nameLower.includes('deneme') &&
-           !nameLower.includes('sahte') &&
-           !nameLower.includes('fake') &&
-           !nameLower.includes('vibegoal') &&
-           !idLower.includes('elaz') &&
-           !idLower.includes('test') &&
-           !idLower.includes('deneme') &&
-           !idLower.includes('sahte') &&
-           !idLower.includes('fake') &&
-           !idLower.includes('vibegoal')
-  })
-}
-
 export default function RoomScreen({ onNavigate, theme, currentUser }) {
   useEffect(() => { injectRoomStyles() }, [])
   const t = theme || THEMES.slate
 
-  const [myRooms, setMyRooms]       = useState(() => {
-    try {
-      const saved = localStorage.getItem(`vg_my_rooms_${currentUser?.uid}`)
-      return saved ? filterFakeRooms(JSON.parse(saved)) : []
-    } catch {
-      return []
-    }
-  })
+  const [myRooms, setMyRooms]       = useState([])
+  const [publicRooms, setPublicRooms] = useState([])
 
-  const [publicRooms, setPublicRooms] = useState(() => {
-    try {
-      const saved = localStorage.getItem('vg_public_rooms')
-      return saved ? filterFakeRooms(JSON.parse(saved)) : []
-    } catch {
-      return []
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setMyRooms([])
+      return undefined
     }
-  })
+    return roomService.subscribeUserRooms(currentUser.uid, setMyRooms)
+  }, [currentUser?.uid])
 
+  useEffect(() => {
+    return roomService.subscribePublicRooms(setPublicRooms)
+  }, [])
   const [activeTab, setActiveTab]   = useState('mine')
   const [showCreate, setShowCreate] = useState(false)
   const [toast, setToast]           = useState(null)
-
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem(`vg_my_rooms_${currentUser.uid}`, JSON.stringify(myRooms))
-    }
-  }, [myRooms, currentUser])
-
-  useEffect(() => {
-    localStorage.setItem('vg_public_rooms', JSON.stringify(publicRooms))
-  }, [publicRooms])
 
   const LEAGUE_MAPPING = {
     '🌍 Dünya Kupası 2026': 'wc2026',
@@ -838,7 +778,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
     '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier Lig': 'pl',
     '🇪🇸 La Liga': 'laliga',
     '🇮🇹 Serie A': 'seriea',
-    '🇩🇪 Bundesliga': 'bundesliga'
+    '🇩🇪 Bundesliga': 'bundesliga',
   }
 
   function handleEnterRoom(room) {
@@ -846,51 +786,55 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
     onNavigate('dashboard', { roomId: room.id, roomName: room.name, leagueId })
   }
 
-  function handleLeaveRoom(id) {
-    setMyRooms(prev => prev.filter(r => r.id !== id))
-    setPublicRooms(prev => prev.filter(r => r.id !== id))
+  async function handleLeaveRoom(id) {
+    if (!currentUser?.uid) return
+    try {
+      await roomService.leaveRoom(id, currentUser.uid)
+    } catch (err) {
+      console.error('Odadan ayrılma hatası:', err)
+    }
   }
 
-  function handleCreated(roomData) {
+  async function handleCreated(roomData) {
+    if (!currentUser?.uid) return
     const leagueOpt = LEAGUE_OPTIONS.find(l => l.id === roomData.league)
-    const userPoints = currentUser ? (dbService.getProfile(currentUser.uid)?.totalPoints || 0) : 0
-    const newRoom = {
-      id: `r-${Date.now()}`,
-      name: roomData.name,
-      league: leagueOpt?.label || roomData.league,
-      leagueId: roomData.league,
-      members: 1,
-      maxMembers: 20,
-      myRank: 1,
-      totalPoints: userPoints,
-      avatar: '✨',
-      color: t.accent,
-      lastActivity: 'şimdi',
-      isAdmin: true,
-      description: roomData.isPublic ? 'Kullanıcı tarafından oluşturulan açık tahmin odası.' : '',
+    try {
+      await roomService.createRoom({
+        name: roomData.name,
+        leagueId: roomData.league,
+        leagueLabel: leagueOpt?.label || roomData.league,
+        isPublic: roomData.isPublic,
+        ownerId: currentUser.uid,
+        accentColor: t.accent,
+      })
+      setToast(`🎉 "${roomData.name}" odası oluşturuldu!`)
+      setTimeout(() => setToast(null), 3500)
+    } catch (err) {
+      console.error('Oda oluşturma hatası:', err)
+      setToast('Oda oluşturulamadı. Lütfen tekrar deneyin.')
+      setTimeout(() => setToast(null), 3500)
     }
-    setMyRooms(prev => [newRoom, ...prev])
-    if (roomData.isPublic) {
-      setPublicRooms(prev => [newRoom, ...prev])
-    }
-    setToast(`🎉 "${roomData.name}" odası oluşturuldu!`)
-    setTimeout(() => setToast(null), 3500)
   }
 
-  function handleJoined(room) {
-    const userPoints = currentUser ? (dbService.getProfile(currentUser.uid)?.totalPoints || 0) : 0
-    const joinedRoom = { ...room, totalPoints: userPoints }
-    setMyRooms(prev => (prev.some(r => r.id === joinedRoom.id) ? prev : [joinedRoom, ...prev]))
-    setToast(`🎉 "${joinedRoom.name}" odasına katıldın! Dashboard açılıyor...`)
-    setTimeout(() => {
-      setToast(null)
-      onNavigate('dashboard', { roomId: joinedRoom.id, roomName: joinedRoom.name })
-    }, 1500)
+  async function handleJoined(room) {
+    if (!currentUser?.uid) return
+    try {
+      const joinedRoom = await roomService.joinRoom(room.id, currentUser.uid)
+      setToast(`🎉 "${joinedRoom.name}" odasına katıldın! Dashboard açılıyor...`)
+      setTimeout(() => {
+        setToast(null)
+        onNavigate('dashboard', { roomId: joinedRoom.id, roomName: joinedRoom.name })
+      }, 1500)
+    } catch (err) {
+      console.error('Odaya katılma hatası:', err)
+      setToast('Odaya katılınamadı. Lütfen tekrar deneyin.')
+      setTimeout(() => setToast(null), 3500)
+    }
   }
 
   return (
     <div className="vg-app-shell" style={{
-      minHeight: '100dvh',
+      minHeight: '100svh',
       background: t.bg,
       fontFamily: 'Inter, sans-serif',
       color: '#fff',
@@ -1011,7 +955,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
 
         {/* ── JOIN BY CODE (always visible) ──────── */}
         <div style={{ padding: '20px 0 0' }}>
-          <JoinByCode onJoined={handleJoined} theme={t} />
+          <JoinByCode onJoined={handleJoined} theme={t} currentUser={currentUser} />
         </div>
 
         {/* ── TAB CONTENT ────────────────────────── */}

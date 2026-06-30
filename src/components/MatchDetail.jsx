@@ -197,7 +197,7 @@ export default function MatchDetail({ theme }) {
 
   return (
     <div className="vg-app-shell" style={{
-      height: '100dvh',
+      height: '100svh',
       background: t.bg,
       color: '#fff',
       display: 'flex',

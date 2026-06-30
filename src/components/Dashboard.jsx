@@ -18,7 +18,7 @@ import {
   LEAGUE_IDS,
   CURRENT_SEASON,
 } from '../services/footballApi'
-import { dbService, authService } from '../services/dataService'
+import { dbService, authService, roomService } from '../services/dataService'
 import { deleteCurrentUser, getSignInProvider } from '../services/firebase'
 import { getAuthErrorMessage } from '../utils/authErrors'
 import {
@@ -550,8 +550,7 @@ function Header({ league, setLeague, totalPoints, onNavigate, theme, onCycleThem
 function TopBar({ theme, avatar, onProfile, onCycleTheme, showLeagues, onToggleSearch }) {
   const t = theme || THEMES.slate
   return (
-    <header style={{
-      padding: '14px 16px 12px',
+    <header className="vg-top-bar" style={{
       position: 'sticky', top: 0, zIndex: 100,
       background: t.bg,
       borderBottom: `1px solid ${t.border}`,
@@ -740,14 +739,12 @@ function BottomNav({ theme, active, onHome, onGroups, onGames, onProfile }) {
   ]
   return (
     <nav className="vg-bottom-nav" style={{
-      position: 'fixed', bottom: 0, zIndex: 200,
+      flexShrink: 0,
+      zIndex: 200,
       background: t.bg,
       borderTop: `1px solid ${t.border}`,
       boxShadow: '0 -4px 24px rgba(0,0,0,0.4)',
       display: 'flex', alignItems: 'stretch',
-      padding: '8px 6px',
-      paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
-      boxSizing: 'border-box',
     }}>
       {items.map(it => {
         const on = active === it.id
@@ -2218,6 +2215,15 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [toastEvent, setToastEvent]     = useState(null)
   const [totalPoints, setTotalPoints]   = useState(0)
   const [leaderboard, setLeaderboard]   = useState(() => getDynamicLeaderboard(currentUser.uid))
+  const [myGroups, setMyGroups]         = useState([])
+
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setMyGroups([])
+      return undefined
+    }
+    return roomService.subscribeUserRooms(currentUser.uid, setMyGroups)
+  }, [currentUser?.uid])
 
   /* ── userPredictions — maç bazlı skor tahmini ── */
   // { [matchId]: { homeScore: number, awayScore: number } }
@@ -2544,18 +2550,15 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   // Mockup HOME için türetilen veriler (ekstra veri yok — gerçek state'ten)
   const featuredMatch = matches && matches.length > 0 ? matches[0] : null
   const otherMatches  = matches && matches.length > 1 ? matches.slice(1) : []
-  const myGroups = (() => {
-    try { return JSON.parse(localStorage.getItem(`vg_my_rooms_${currentUser.uid}`) || '[]') }
-    catch { return [] }
-  })()
 
   return (
     <div className="vg-app-shell" style={{
-      height: '100dvh',
+      height: '100svh',
+      minHeight: '100svh',
+      maxHeight: '100svh',
       background: t.bg,
       fontFamily: 'Inter, sans-serif',
       color: '#fff',
-      paddingBottom: 0,
       position: 'relative',
       transition: 'background 0.4s ease',
       overflowX: 'hidden',
@@ -2799,7 +2802,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
         {/* ── TAB: HOME (MATCHES) ──────────────── */}
         {activeTab === 'matches' && (
-          <div key="tab-matches" style={{ flex: 1, overflowY: 'auto', paddingBottom: 110 }} className="scroll-hide vg-fade">
+          <div key="tab-matches" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }} className="scroll-hide vg-fade">
 
             {/* ── Öne çıkan canlı maç ─────────────── */}
             {matchesLoading ? (
@@ -3286,6 +3289,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       <div style={{
         position: 'fixed',
         top: 0,
+        paddingTop: 'env(safe-area-inset-top, 0px)',
         left: 0,
         bottom: 0,
         width: '85%',

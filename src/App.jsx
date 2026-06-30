@@ -158,6 +158,16 @@ export default function App() {
   }, [theme.id])
 
   useEffect(() => {
+    let unsub = () => {}
+    authService.initSessionListener((user) => {
+      setCurrentUser(user)
+    }).then((fn) => {
+      unsub = typeof fn === 'function' ? fn : () => {}
+    })
+    return () => unsub()
+  }, [])
+
+  useEffect(() => {
     // Database Cleanup: Purge any remnants of mock/test users from localStorage
     try {
       const users = JSON.parse(localStorage.getItem('vg_users') || '{}')
@@ -288,8 +298,8 @@ export default function App() {
     navigateHook('/dashboard')
   }
 
-  function handleLogout() {
-    authService.logout()
+  async function handleLogout() {
+    await authService.logout()
     setCurrentUser(null)
     navigateHook('/auth')
   }
