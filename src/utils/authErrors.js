@@ -11,8 +11,9 @@ export function getAuthErrorMessage(error) {
     case 'auth/invalid-email':
       return 'Geçersiz e-posta adresi biçimi. Lütfen kontrol ediniz.';
     case 'auth/user-not-found':
-      return 'Bu e-posta adresine kayıtlı bir kullanıcı bulunamadı.';
+      return 'Bu e-posta adresine ait bir hesap bulunamadı.';
     case 'auth/wrong-password':
+      return 'Hatalı şifre girdiniz.';
     case 'auth/invalid-credential':
     case 'auth/invalid-login-credentials':
       return 'E-posta veya şifre hatalı. Lütfen tekrar deneyiniz.';

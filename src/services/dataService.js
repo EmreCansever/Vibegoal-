@@ -12,9 +12,10 @@ import {
   loginWithEmail,
   firebaseSignOut,
   subscribeAuthState,
+  sessionUserFromAuth,
+  syncUserProfileInBackground,
   mapFirebaseUserToSession,
   upsertUserDocument,
-  fetchUserDocument,
   patchUserDocument,
 } from './firebase';
 
@@ -60,6 +61,30 @@ function profileToCache(uid, profile) {
   if (profile) lsSet(LS_KEYS.USER_PROFILE(uid), profile);
 }
 
+/** Yerel profil önbelleğini oturum kullanıcısıyla birleştir */
+function mergeSessionWithLocalProfile(sessionUser) {
+  const cached = lsGet(LS_KEYS.USER_PROFILE(sessionUser.uid));
+  if (!cached) {
+    lsSet(LS_KEYS.USER_PROFILE(sessionUser.uid), {
+      uid: sessionUser.uid,
+      username: sessionUser.username,
+      totalPoints: 0,
+      correct: 0,
+      total: 0,
+      badge: '',
+      avatar: sessionUser.avatar || '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    return sessionUser;
+  }
+  return {
+    ...sessionUser,
+    username: cached.username || sessionUser.username,
+    avatar: cached.avatar || sessionUser.avatar,
+  };
+}
+
 /* ═══════════════════════════════════════════════════════════════
    authService
 ═══════════════════════════════════════════════════════════════ */
@@ -75,24 +100,20 @@ export const authService = {
       return () => {};
     }
 
-    return subscribeAuthState(async (firebaseUser) => {
+    return subscribeAuthState((firebaseUser) => {
       if (!firebaseUser) {
         cacheSessionUser(null);
         callback(null);
         return;
       }
-      try {
-        const sessionUser = await mapFirebaseUserToSession(firebaseUser);
-        cacheSessionUser(sessionUser);
-        if (sessionUser?.uid) {
-          const doc = await fetchUserDocument(sessionUser.uid);
-          if (doc) profileToCache(sessionUser.uid, doc);
-        }
-        callback(sessionUser);
-      } catch (err) {
-        console.error('Oturum senkronizasyon hatası:', err);
-        callback(this.getCurrentUser());
-      }
+
+      const sessionUser = mergeSessionWithLocalProfile(sessionUserFromAuth(firebaseUser));
+      cacheSessionUser(sessionUser);
+      callback(sessionUser);
+
+      syncUserProfileInBackground(firebaseUser).then((doc) => {
+        if (doc) profileToCache(firebaseUser.uid, doc);
+      });
     });
   },
 
@@ -146,27 +167,21 @@ export const authService = {
   },
 
   /**
-   * E-posta + şifre ile giriş
+   * E-posta + şifre ile giriş — yalnızca Firebase Auth, Firestore giriş anında yok
    */
   async login({ email, password }) {
     if (isFirebaseConfigured) {
       try {
         const firebaseUser = await loginWithEmail({ email, password });
-        const sessionUser = await mapFirebaseUserToSession(firebaseUser);
+        const sessionUser = mergeSessionWithLocalProfile(sessionUserFromAuth(firebaseUser));
         cacheSessionUser(sessionUser);
-        dbService.initProfile(sessionUser.uid, sessionUser.username);
+
+        syncUserProfileInBackground(firebaseUser).then((doc) => {
+          if (doc) profileToCache(firebaseUser.uid, doc);
+        });
+
         return { success: true, user: sessionUser };
       } catch (err) {
-        const code = err?.code || '';
-        if (
-          code === 'auth/invalid-credential' ||
-          code === 'auth/user-not-found' ||
-          code === 'auth/wrong-password' ||
-          code === 'auth/invalid-login-credentials'
-        ) {
-          const local = this._localLogin({ email, password });
-          if (local.success) return local;
-        }
         return { success: false, error: err };
       }
     }

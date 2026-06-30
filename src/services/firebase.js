@@ -236,33 +236,56 @@ export function subscribeAuthState(callback) {
   return onAuthStateChanged(auth, callback);
 }
 
-/**
- * Oturum kullanıcısından uygulama session objesi üretir
- */
-export async function mapFirebaseUserToSession(firebaseUser) {
+/** Auth kullanıcısından anında oturum objesi — Firestore sorgusu yok */
+export function sessionUserFromAuth(firebaseUser) {
   if (!firebaseUser) return null;
 
-  let profile = null;
-  try {
-    profile = await fetchUserDocument(firebaseUser.uid);
-    if (!profile) {
-      profile = await upsertUserDocument(firebaseUser);
-    }
-  } catch (err) {
-    console.warn('Firestore profil senkronizasyonu atlandı:', err);
-  }
-
-  const email = (firebaseUser.email || profile?.email || '').toLowerCase().trim();
+  const email = (firebaseUser.email || '').toLowerCase().trim();
 
   return {
     uid: firebaseUser.uid,
     username:
-      profile?.username ||
       firebaseUser.displayName ||
       email.split('@')[0] ||
       'Kullanıcı',
     email,
-    avatar: profile?.avatar || firebaseUser.photoURL || '',
+    avatar: firebaseUser.photoURL || '',
+  };
+}
+
+/** Giriş sonrası Firestore profil senkronu — arka planda, girişi bloklamaz */
+export function syncUserProfileInBackground(firebaseUser) {
+  if (!firebaseUser?.uid) return Promise.resolve(null);
+
+  return (async () => {
+    try {
+      let profile = await fetchUserDocument(firebaseUser.uid);
+      if (!profile) {
+        profile = await upsertUserDocument(firebaseUser);
+      }
+      return profile;
+    } catch (err) {
+      console.warn('Arka plan profil senkronizasyonu atlandı:', err);
+      return null;
+    }
+  })();
+}
+
+/**
+ * Oturum kullanıcısından uygulama session objesi üretir (Firestore dahil — kayıt/sosyal giriş)
+ */
+export async function mapFirebaseUserToSession(firebaseUser) {
+  if (!firebaseUser) return null;
+
+  const base = sessionUserFromAuth(firebaseUser);
+  const profile = await syncUserProfileInBackground(firebaseUser);
+
+  if (!profile) return base;
+
+  return {
+    ...base,
+    username: profile.username || base.username,
+    avatar: profile.avatar || base.avatar,
   };
 }
 

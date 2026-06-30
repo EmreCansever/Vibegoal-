@@ -766,9 +766,6 @@ function BottomNav({ theme, active, onHome, onGroups, onGames, onProfile }) {
           </button>
         )
       })}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingLeft: 4, paddingRight: 2 }}>
-        <span style={{ fontSize: 16, color: t.accent, opacity: 0.85, filter: `drop-shadow(0 0 6px ${t.glow})` }}>✦</span>
-      </div>
     </nav>
   )
 }
