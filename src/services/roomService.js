@@ -19,7 +19,14 @@ import {
   serverTimestamp,
   limit,
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import {
+  auth,
+  db,
+  isFirebaseConfigured,
+  waitForAuthReady,
+  resolveAuthUid,
+} from './firebase';
 
 function formatLastActivity(val) {
   if (!val) return '';
@@ -116,6 +123,75 @@ function normalizeInviteCode(raw) {
   return match ? match[0].replace(/\s/g, '') : trimmed;
 }
 
+/** Auth hazir olunca Firestore dinleyicisini baglar; cikis/giris sonrasi yeniden baglanir */
+function subscribeRoomsQuery(fallbackUid, buildQuery, callback, errorLabel) {
+  if (!isFirebaseConfigured || !db) {
+    callback([]);
+    return () => {};
+  }
+
+  let unsubSnapshot = () => {};
+  let cancelled = false;
+
+  const attach = async () => {
+    unsubSnapshot();
+    unsubSnapshot = () => {};
+    if (cancelled) return;
+
+    try {
+      await waitForAuthReady();
+    } catch (err) {
+      console.warn(`${errorLabel}: auth hazir degil`, err);
+      return;
+    }
+    if (cancelled) return;
+
+    const queryUid = resolveAuthUid(fallbackUid);
+    if (!queryUid) {
+      callback([]);
+      return;
+    }
+
+    if (auth?.currentUser?.uid && fallbackUid && auth.currentUser.uid !== fallbackUid) {
+      console.warn(`${errorLabel}: uid uyusmazligi duzeltildi`, {
+        cached: fallbackUid,
+        firebase: auth.currentUser.uid,
+      });
+    }
+
+    const q = buildQuery(queryUid);
+    unsubSnapshot = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs
+          .map((d) => mapRoomDoc(d, queryUid))
+          .filter(Boolean);
+        callback(normalizeRoomList(list));
+      },
+      (err) => {
+        console.error(`${errorLabel}:`, err);
+        if (err?.code !== 'permission-denied') {
+          callback([]);
+        }
+      },
+    );
+  };
+
+  let unsubAuth = () => {};
+  attach();
+  if (auth) {
+    unsubAuth = onAuthStateChanged(auth, () => {
+      attach();
+    });
+  }
+
+  return () => {
+    cancelled = true;
+    unsubSnapshot();
+    unsubAuth();
+  };
+}
+
 export const roomService = {
   isAvailable: () => isFirebaseConfigured && !!db,
 
@@ -124,28 +200,19 @@ export const roomService = {
    * @returns {() => void} unsubscribe
    */
   subscribeUserRooms(uid, callback) {
-    if (!this.isAvailable() || !uid) {
+    if (!uid) {
       callback([]);
       return () => {};
     }
 
-    const q = query(
-      collection(db, 'rooms'),
-      where('memberIds', 'array-contains', uid),
-    );
-
-    return onSnapshot(
-      q,
-      (snap) => {
-        const list = snap.docs
-          .map((d) => mapRoomDoc(d, uid))
-          .filter(Boolean);
-        callback(normalizeRoomList(list));
-      },
-      (err) => {
-        console.error('Oda dinleme hatası:', err);
-        callback([]);
-      },
+    return subscribeRoomsQuery(
+      uid,
+      (queryUid) => query(
+        collection(db, 'rooms'),
+        where('memberIds', 'array-contains', queryUid),
+      ),
+      callback,
+      'Oda dinleme hatasi',
     );
   },
 
@@ -154,25 +221,11 @@ export const roomService = {
    * @returns {() => void} unsubscribe
    */
   subscribePublicRooms(callback, uid = null) {
-    if (!this.isAvailable()) {
-      callback([]);
-      return () => {};
-    }
-
-    const q = query(collection(db, 'rooms'), where('isPublic', '==', true));
-
-    return onSnapshot(
-      q,
-      (snap) => {
-        const list = snap.docs
-          .map((d) => mapRoomDoc(d, uid))
-          .filter(Boolean);
-        callback(normalizeRoomList(list));
-      },
-      (err) => {
-        console.error('Genel oda dinleme hatası:', err);
-        callback([]);
-      },
+    return subscribeRoomsQuery(
+      uid,
+      () => query(collection(db, 'rooms'), where('isPublic', '==', true)),
+      callback,
+      'Genel oda dinleme hatasi',
     );
   },
 
@@ -190,7 +243,10 @@ export const roomService = {
     if (!this.isAvailable()) {
       throw new Error('Firebase yapılandırılmamış. Oda oluşturulamıyor.');
     }
-    if (!ownerId) throw new Error('Oturum açmanız gerekiyor.');
+
+    await waitForAuthReady();
+    const resolvedOwnerId = resolveAuthUid(ownerId);
+    if (!resolvedOwnerId) throw new Error('Oturum açmanız gerekiyor.');
 
     const roomRef = doc(collection(db, 'rooms'));
     const inviteCode = generateInviteCode(name);
@@ -200,8 +256,8 @@ export const roomService = {
       leagueId,
       league: leagueLabel,
       isPublic: !!isPublic,
-      ownerId,
-      memberIds: [ownerId],
+      ownerId: resolvedOwnerId,
+      memberIds: [resolvedOwnerId],
       members: 1,
       maxMembers: 20,
       inviteCode,
@@ -220,7 +276,7 @@ export const roomService = {
 
     try {
       const saved = await getDoc(roomRef);
-      const mapped = mapRoomDoc(saved, ownerId);
+      const mapped = mapRoomDoc(saved, resolvedOwnerId);
       if (mapped) return mapped;
     } catch (err) {
       console.warn('Oda oluşturuldu; okuma atlandı:', err);
@@ -232,7 +288,7 @@ export const roomService = {
       leagueId,
       league: leagueLabel,
       isPublic: !!isPublic,
-      ownerId,
+      ownerId: resolvedOwnerId,
       members: 1,
       maxMembers: 20,
       totalPoints: 0,
@@ -257,6 +313,10 @@ export const roomService = {
       throw new Error('Firebase yapılandırılmamış.');
     }
 
+    await waitForAuthReady();
+    const resolvedUid = resolveAuthUid(uid);
+    if (!resolvedUid) throw new Error('Oturum açmanız gerekiyor.');
+
     const roomRef = doc(db, 'rooms', roomId);
     const snap = await getDoc(roomRef);
     if (!snap.exists()) throw new Error('Oda bulunamadı.');
@@ -264,8 +324,8 @@ export const roomService = {
     const data = snap.data();
     const memberIds = data.memberIds || [];
 
-    if (memberIds.includes(uid)) {
-      return mapRoomDoc(snap, uid);
+    if (memberIds.includes(resolvedUid)) {
+      return mapRoomDoc(snap, resolvedUid);
     }
 
     if (memberIds.length >= (data.maxMembers ?? 20)) {
@@ -273,14 +333,14 @@ export const roomService = {
     }
 
     await updateDoc(roomRef, {
-      memberIds: arrayUnion(uid),
+      memberIds: arrayUnion(resolvedUid),
       members: memberIds.length + 1,
       updatedAt: serverTimestamp(),
       lastActivity: 'şimdi',
     });
 
     const updated = await getDoc(roomRef);
-    return mapRoomDoc(updated, uid);
+    return mapRoomDoc(updated, resolvedUid);
   },
 
   /**
@@ -290,6 +350,10 @@ export const roomService = {
     if (!this.isAvailable()) {
       throw new Error('Firebase yapılandırılmamış.');
     }
+
+    await waitForAuthReady();
+    const resolvedUid = resolveAuthUid(uid);
+    if (!resolvedUid) throw new Error('Oturum açmanız gerekiyor.');
 
     const inviteCode = normalizeInviteCode(rawCode);
     if (!inviteCode.startsWith('VG')) {
@@ -308,7 +372,7 @@ export const roomService = {
     }
 
     const roomDoc = snap.docs[0];
-    return this.joinRoom(roomDoc.id, uid);
+    return this.joinRoom(roomDoc.id, resolvedUid);
   },
 
   /**
@@ -318,14 +382,17 @@ export const roomService = {
     if (!this.isAvailable()) {
       throw new Error('Firebase yapılandırılmamış.');
     }
-    if (!uid) throw new Error('Oturum açmanız gerekiyor.');
+
+    await waitForAuthReady();
+    const resolvedUid = resolveAuthUid(uid);
+    if (!resolvedUid) throw new Error('Oturum açmanız gerekiyor.');
 
     const roomRef = doc(db, 'rooms', roomId);
     const snap = await getDoc(roomRef);
     if (!snap.exists()) throw new Error('Oda bulunamadı.');
 
     const data = snap.data();
-    if (data.ownerId !== uid) {
+    if (data.ownerId !== resolvedUid) {
       throw new Error('Yalnızca grup admini grubu silebilir.');
     }
 
@@ -338,12 +405,16 @@ export const roomService = {
   async leaveRoom(roomId, uid) {
     if (!this.isAvailable()) return;
 
+    await waitForAuthReady();
+    const resolvedUid = resolveAuthUid(uid);
+    if (!resolvedUid) return;
+
     const roomRef = doc(db, 'rooms', roomId);
     const snap = await getDoc(roomRef);
     if (!snap.exists()) return;
 
     const data = snap.data();
-    const memberIds = (data.memberIds || []).filter((id) => id !== uid);
+    const memberIds = (data.memberIds || []).filter((id) => id !== resolvedUid);
     const newCount = memberIds.length;
 
     if (newCount === 0) {
