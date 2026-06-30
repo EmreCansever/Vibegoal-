@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { THEMES, withGlowOpacity } from '../App'
 import { roomService } from '../services/dataService'
 
@@ -462,22 +462,34 @@ function Toggle({ value, onChange, theme }) {
   )
 }
 
-function CreateRoomModal({ onClose, onCreated, theme }) {
+function CreateRoomModal({ onClose, onCreate, theme }) {
   const t = theme || THEMES.slate
   const [name, setName]       = useState('')
   const [league, setLeague]   = useState('wc2026')
   const [isPublic, setPublic] = useState(false)
   const [loading, setLoading] = useState(false)
   const [done, setDone]       = useState(false)
+  const [error, setError]     = useState('')
 
-  function handleCreate() {
-    if (!name.trim()) return
+  async function handleCreate() {
+    if (!name.trim() || loading) return
     setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
+    setError('')
+    try {
+      await onCreate({ name: name.trim(), league, isPublic })
       setDone(true)
-      setTimeout(() => { onCreated({ name: name.trim(), league, isPublic }); onClose() }, 1200)
-    }, 900)
+      setTimeout(() => onClose(), 900)
+    } catch (err) {
+      console.error('Oda oluşturma hatası:', err)
+      const code = err?.code || ''
+      if (code === 'permission-denied') {
+        setError('Firestore izin hatası. Firebase kurallarını kontrol edin.')
+      } else {
+        setError(err?.message || 'Oda oluşturulamadı. Lütfen tekrar deneyin.')
+      }
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -618,6 +630,16 @@ function CreateRoomModal({ onClose, onCreated, theme }) {
               </div>
               <Toggle value={isPublic} onChange={setPublic} theme={t} />
             </div>
+
+            {error && (
+              <div style={{
+                marginBottom: 16, padding: '12px 14px', borderRadius: 12,
+                background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)',
+                color: '#fca5a5', fontSize: 12, lineHeight: 1.5,
+              }}>
+                {error}
+              </div>
+            )}
 
             {/* Create button */}
             <button
@@ -798,9 +820,6 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
   useEffect(() => { injectRoomStyles() }, [])
   const t = theme || THEMES.slate
 
-  const uidRef = useRef(currentUser?.uid ?? null)
-  uidRef.current = currentUser?.uid ?? null
-
   const [myRooms, setMyRooms] = useState([])
   const [publicRooms, setPublicRooms] = useState([])
   const [roomsLoading, setRoomsLoading] = useState(true)
@@ -826,7 +845,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
       setPublicRooms(Array.isArray(rooms) ? rooms : [])
     }
 
-    const uid = uidRef.current
+    const uid = currentUser?.uid
     if (uid) {
       unsubUser = roomService.subscribeUserRooms(uid, handleUserRooms)
     } else {
@@ -841,7 +860,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
       unsubUser()
       unsubPublic()
     }
-  }, [])
+  }, [currentUser?.uid])
 
   const LEAGUE_MAPPING = {
     '🌍 Dünya Kupası 2026': 'wc2026',
@@ -868,25 +887,21 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
     }
   }
 
-  async function handleCreated(roomData) {
-    if (!currentUser?.uid) return
-    const leagueOpt = LEAGUE_OPTIONS.find(l => l.id === roomData.league)
-    try {
-      await roomService.createRoom({
-        name: roomData.name,
-        leagueId: roomData.league,
-        leagueLabel: leagueOpt?.label || roomData.league,
-        isPublic: roomData.isPublic,
-        ownerId: currentUser.uid,
-        accentColor: t.accent,
-      })
-      setToast(`🎉 "${roomData.name}" odası oluşturuldu!`)
-      setTimeout(() => setToast(null), 3500)
-    } catch (err) {
-      console.error('Oda oluşturma hatası:', err)
-      setToast('Oda oluşturulamadı. Lütfen tekrar deneyin.')
-      setTimeout(() => setToast(null), 3500)
+  async function handleCreateRoom(roomData) {
+    if (!currentUser?.uid) {
+      throw new Error('Oturum açmanız gerekiyor.')
     }
+    const leagueOpt = LEAGUE_OPTIONS.find(l => l.id === roomData.league)
+    await roomService.createRoom({
+      name: roomData.name,
+      leagueId: roomData.league,
+      leagueLabel: leagueOpt?.label || roomData.league,
+      isPublic: roomData.isPublic,
+      ownerId: currentUser.uid,
+      accentColor: t.accent,
+    })
+    setToast(`🎉 "${roomData.name}" odası oluşturuldu!`)
+    setTimeout(() => setToast(null), 3500)
   }
 
   async function handleJoined(room) {
@@ -1042,7 +1057,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
       {showCreate && (
         <CreateRoomModal
           onClose={() => setShowCreate(false)}
-          onCreated={handleCreated}
+          onCreate={handleCreateRoom}
           theme={t}
         />
       )}

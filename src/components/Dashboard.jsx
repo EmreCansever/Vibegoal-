@@ -2232,7 +2232,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       cancelled = true
       unsub()
     }
-  }, [])
+  }, [currentUser?.uid])
 
   /* ── userPredictions — maç bazlı skor tahmini ── */
   // { [matchId]: { homeScore: number, awayScore: number } }

@@ -21,6 +21,19 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 
+function formatLastActivity(val) {
+  if (!val) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val?.toDate === 'function') {
+    try {
+      return val.toDate().toLocaleDateString('tr-TR');
+    } catch {
+      return '';
+    }
+  }
+  return '';
+}
+
 function mapRoomDoc(docSnap, uid) {
   if (!docSnap?.id) return null;
 
@@ -45,7 +58,7 @@ function mapRoomDoc(docSnap, uid) {
     avatar: data.avatar || '✨',
     color: data.color || '#a3e635',
     description: data.description || '',
-    lastActivity: data.lastActivity || '',
+    lastActivity: formatLastActivity(data.lastActivity),
     isPublic: !!data.isPublic,
     inviteCode: data.inviteCode || '',
     ownerId: data.ownerId || '',
@@ -200,7 +213,28 @@ export const roomService = {
     await setDoc(roomRef, payload);
     const saved = await getDoc(roomRef);
     const mapped = mapRoomDoc(saved, ownerId);
-    return mapped || normalizeRoomList([{ id: roomRef.id, ...payload, totalPoints: 0 }])[0];
+    if (mapped) return mapped;
+
+    return {
+      id: roomRef.id,
+      name: name.trim(),
+      leagueId,
+      league: leagueLabel,
+      isPublic: !!isPublic,
+      ownerId,
+      members: 1,
+      maxMembers: 20,
+      totalPoints: 0,
+      avatar: '✨',
+      color: accentColor || '#a3e635',
+      description: payload.description,
+      lastActivity: 'şimdi',
+      inviteCode,
+      isAdmin: true,
+      myRank: 1,
+      hot: false,
+      requested: false,
+    };
   },
 
   /**
