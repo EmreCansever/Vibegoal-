@@ -8,7 +8,9 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocFromServer,
   getDocs,
+  getDocsFromServer,
   updateDoc,
   deleteDoc,
   onSnapshot,
@@ -18,6 +20,7 @@ import {
   arrayRemove,
   serverTimestamp,
   limit,
+  waitForPendingWrites,
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import {
@@ -123,6 +126,40 @@ function normalizeInviteCode(raw) {
   return match ? match[0].replace(/\s/g, '') : trimmed;
 }
 
+function mapFirestoreError(err, fallback) {
+  const code = err?.code || '';
+  if (code === 'permission-denied') {
+    return new Error(
+      'Firestore izin hatasi. Firebase Console > Firestore > Rules kurallarini deploy edin.',
+    );
+  }
+  if (code === 'unavailable') {
+    return new Error('Firestore sunucusuna ulasilamadi. Internet baglantinizi kontrol edin.');
+  }
+  return err instanceof Error ? err : new Error(fallback || 'Firestore islemi basarisiz.');
+}
+
+/** Yazinin gercekten sunucuya ulastigini dogrular — yerel onbellek sahte basariyi onler */
+async function confirmServerDocument(docRef, label = 'Kayit') {
+  if (!db) throw new Error('Firestore baglantisi yok.');
+
+  try {
+    await waitForPendingWrites(db);
+  } catch (err) {
+    console.warn('Bekleyen yazimlar beklenirken hata:', err);
+  }
+
+  try {
+    const snap = await getDocFromServer(docRef);
+    if (!snap.exists()) {
+      throw new Error(`${label} sunucuya yazilamadi. Firestore kurallarini kontrol edin.`);
+    }
+    return snap;
+  } catch (err) {
+    throw mapFirestoreError(err, `${label} sunucuya yazilamadi.`);
+  }
+}
+
 /** Auth hazir olunca Firestore dinleyicisini baglar; cikis/giris sonrasi yeniden baglanir */
 function subscribeRoomsQuery(fallbackUid, buildQuery, callback, errorLabel) {
   if (!isFirebaseConfigured || !db) {
@@ -192,6 +229,69 @@ function subscribeRoomsQuery(fallbackUid, buildQuery, callback, errorLabel) {
   };
 }
 
+/** Herkese acik odalar — yalnizca giris yapmis kullanicilar okuyabilir */
+function subscribePublicRoomsQuery(mapUid, callback) {
+  if (!isFirebaseConfigured || !db) {
+    callback([]);
+    return () => {};
+  }
+
+  let unsubSnapshot = () => {};
+  let cancelled = false;
+
+  const attach = async () => {
+    unsubSnapshot();
+    unsubSnapshot = () => {};
+    if (cancelled) return;
+
+    try {
+      await waitForAuthReady();
+    } catch (err) {
+      console.warn('Genel oda dinleme: auth hazir degil', err);
+      return;
+    }
+    if (cancelled) return;
+
+    if (!auth?.currentUser) {
+      callback([]);
+      return;
+    }
+
+    const queryUid = resolveAuthUid(mapUid);
+    const q = query(collection(db, 'rooms'), where('isPublic', '==', true));
+
+    unsubSnapshot = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs
+          .map((d) => mapRoomDoc(d, queryUid))
+          .filter(Boolean);
+        callback(normalizeRoomList(list));
+      },
+      (err) => {
+        console.error('Genel oda dinleme hatasi:', err);
+        if (err?.code !== 'permission-denied') {
+          callback([]);
+        }
+      },
+    );
+  };
+
+  let unsubAuth = () => {};
+  attach();
+  if (auth) {
+    unsubAuth = onAuthStateChanged(auth, () => {
+      attach();
+    });
+  }
+
+  return () => {
+    cancelled = true;
+    unsubSnapshot();
+    unsubAuth();
+  };
+}
+
 export const roomService = {
   isAvailable: () => isFirebaseConfigured && !!db,
 
@@ -221,12 +321,7 @@ export const roomService = {
    * @returns {() => void} unsubscribe
    */
   subscribePublicRooms(callback, uid = null) {
-    return subscribeRoomsQuery(
-      uid,
-      () => query(collection(db, 'rooms'), where('isPublic', '==', true)),
-      callback,
-      'Genel oda dinleme hatasi',
-    );
+    return subscribePublicRoomsQuery(uid, callback);
   },
 
   /**
@@ -273,14 +368,9 @@ export const roomService = {
     };
 
     await setDoc(roomRef, payload);
-
-    try {
-      const saved = await getDoc(roomRef);
-      const mapped = mapRoomDoc(saved, resolvedOwnerId);
-      if (mapped) return mapped;
-    } catch (err) {
-      console.warn('Oda oluşturuldu; okuma atlandı:', err);
-    }
+    const saved = await confirmServerDocument(roomRef, 'Oda');
+    const mapped = mapRoomDoc(saved, resolvedOwnerId);
+    if (mapped) return mapped;
 
     return {
       id: roomRef.id,
@@ -318,7 +408,12 @@ export const roomService = {
     if (!resolvedUid) throw new Error('Oturum açmanız gerekiyor.');
 
     const roomRef = doc(db, 'rooms', roomId);
-    const snap = await getDoc(roomRef);
+    let snap;
+    try {
+      snap = await getDocFromServer(roomRef);
+    } catch (err) {
+      throw mapFirestoreError(err, 'Oda bilgisi alinamadi.');
+    }
     if (!snap.exists()) throw new Error('Oda bulunamadı.');
 
     const data = snap.data();
@@ -339,7 +434,7 @@ export const roomService = {
       lastActivity: 'şimdi',
     });
 
-    const updated = await getDoc(roomRef);
+    const updated = await confirmServerDocument(roomRef, 'Katilim');
     return mapRoomDoc(updated, resolvedUid);
   },
 
@@ -365,7 +460,13 @@ export const roomService = {
       where('inviteCode', '==', inviteCode),
       limit(1),
     );
-    const snap = await getDocs(q);
+
+    let snap;
+    try {
+      snap = await getDocsFromServer(q);
+    } catch (err) {
+      throw mapFirestoreError(err, 'Davet kodu sorgulanamadi.');
+    }
 
     if (snap.empty) {
       throw new Error('Geçersiz kod veya link.');
@@ -397,6 +498,11 @@ export const roomService = {
     }
 
     await deleteDoc(roomRef);
+    await waitForPendingWrites(db);
+    const remaining = await getDocFromServer(roomRef);
+    if (remaining.exists()) {
+      throw new Error('Grup sunucudan silinemedi.');
+    }
   },
 
   /**
@@ -423,7 +529,7 @@ export const roomService = {
     }
 
     await updateDoc(roomRef, {
-      memberIds: arrayRemove(uid),
+      memberIds: arrayRemove(resolvedUid),
       members: newCount,
       updatedAt: serverTimestamp(),
     });

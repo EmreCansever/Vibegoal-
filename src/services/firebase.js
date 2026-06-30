@@ -23,6 +23,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocFromServer,
   getDocs,
   deleteDoc,
   query,
@@ -30,6 +31,8 @@ import {
   limit,
   serverTimestamp,
   collection,
+  enableNetwork,
+  waitForPendingWrites,
 } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -56,6 +59,9 @@ if (hasConfig) {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     auth = getAuth(app);
     db = getFirestore(app);
+    enableNetwork(db).catch((err) => {
+      console.warn('Firestore ag etkinlestirilemedi:', err);
+    });
     authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch((err) => {
       authPersistenceReady = null;
       console.warn('Firebase auth persistence ayarlanamadı:', err);
