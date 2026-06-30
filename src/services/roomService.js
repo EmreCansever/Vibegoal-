@@ -160,6 +160,22 @@ async function confirmServerDocument(docRef, label = 'Kayit') {
   }
 }
 
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('timeout')), ms);
+    }),
+  ]);
+}
+
+/** Arka planda sunucu dogrulama — UI bloklamaz */
+function verifyOnServerLater(docRef, label) {
+  withTimeout(confirmServerDocument(docRef, label), 6000).catch((err) => {
+    console.warn(`${label} sunucu dogrulama:`, err?.message || err);
+  });
+}
+
 /** Auth hazir olunca Firestore dinleyicisini baglar; cikis/giris sonrasi yeniden baglanir */
 function watchFirestoreRooms({
   fallbackUid,
@@ -182,60 +198,53 @@ function watchFirestoreRooms({
     if (!cancelled) onData(Array.isArray(rooms) ? rooms : []);
   };
 
-  const attach = async (authUid) => {
+  const attach = (authUid) => {
     const gen = ++generation;
     unsubSnapshot();
     unsubSnapshot = () => {};
 
-    try {
-      await waitForAuthReady();
-    } catch (err) {
-      console.warn(`${label}: auth hazir degil`, err);
-      emit([]);
+    const startSnapshot = () => {
+      if (cancelled || gen !== generation) return;
+
+      if (!auth?.currentUser) {
+        emit([]);
+        return;
+      }
+
+      const mapUid = authUid || resolveAuthUid(fallbackUid) || auth.currentUser.uid;
+      if (requireMemberUid && !mapUid) {
+        emit([]);
+        return;
+      }
+
+      const q = buildQuery(mapUid);
+      unsubSnapshot = onSnapshot(
+        q,
+        (snap) => {
+          if (cancelled || gen !== generation) return;
+          const list = snap.docs
+            .map((d) => mapRoomDoc(d, mapUid))
+            .filter(Boolean);
+          emit(normalizeRoomList(list));
+        },
+        (err) => {
+          console.error(`${label}:`, err);
+          emit([]);
+        },
+      );
+    };
+
+    if (auth?.currentUser) {
+      startSnapshot();
       return;
     }
-    if (cancelled || gen !== generation) return;
 
-    if (!auth?.currentUser) {
-      emit([]);
-      return;
-    }
-
-    const mapUid = authUid || resolveAuthUid(fallbackUid) || auth.currentUser.uid;
-    if (requireMemberUid && !mapUid) {
-      emit([]);
-      return;
-    }
-
-    const q = buildQuery(mapUid);
-
-    getDocsFromServer(q)
-      .then((snap) => {
-        if (cancelled || gen !== generation) return;
-        const list = snap.docs
-          .map((d) => mapRoomDoc(d, mapUid))
-          .filter(Boolean);
-        emit(normalizeRoomList(list));
-      })
+    waitForAuthReady(2000)
+      .then(startSnapshot)
       .catch((err) => {
-        console.warn(`${label}: sunucu bootstrap`, err);
+        console.warn(`${label}: auth hazir degil`, err);
         emit([]);
       });
-
-    unsubSnapshot = onSnapshot(
-      q,
-      (snap) => {
-        if (cancelled || gen !== generation) return;
-        const list = snap.docs
-          .map((d) => mapRoomDoc(d, mapUid))
-          .filter(Boolean);
-        emit(normalizeRoomList(list));
-      },
-      (err) => {
-        console.error(`${label}:`, err);
-        emit([]);
-      },
-    );
   };
 
   let unsubAuth = () => {};
@@ -312,7 +321,9 @@ export const roomService = {
       throw new Error('Firebase yapılandırılmamış. Oda oluşturulamıyor.');
     }
 
-    await waitForAuthReady();
+    if (!auth?.currentUser) {
+      await waitForAuthReady(2000);
+    }
     const resolvedOwnerId = resolveAuthUid(ownerId);
     if (!resolvedOwnerId) throw new Error('Oturum açmanız gerekiyor.');
 
@@ -341,31 +352,15 @@ export const roomService = {
     };
 
     await setDoc(roomRef, payload);
-    const saved = await confirmServerDocument(roomRef, 'Oda');
-    const mapped = mapRoomDoc(saved, resolvedOwnerId);
-    if (mapped) return mapped;
 
-    return {
-      id: roomRef.id,
-      name: name.trim(),
-      leagueId,
-      league: leagueLabel,
-      isPublic: !!isPublic,
-      ownerId: resolvedOwnerId,
-      members: 1,
-      maxMembers: 20,
-      totalPoints: 0,
-      avatar: '✨',
-      color: accentColor || '#a3e635',
-      description: payload.description,
-      lastActivity: 'şimdi',
-      inviteCode,
-      isAdmin: true,
-      isMember: true,
-      myRank: 1,
-      hot: false,
-      requested: false,
-    };
+    const localSnap = await getDoc(roomRef);
+    const mapped = mapRoomDoc(localSnap, resolvedOwnerId);
+    if (!mapped) {
+      throw new Error('Oda oluşturulamadı.');
+    }
+
+    verifyOnServerLater(roomRef, 'Oda');
+    return mapped;
   },
 
   /**
@@ -376,16 +371,18 @@ export const roomService = {
       throw new Error('Firebase yapılandırılmamış.');
     }
 
-    await waitForAuthReady();
+    await waitForAuthReady(2000);
     const resolvedUid = resolveAuthUid(uid);
     if (!resolvedUid) throw new Error('Oturum açmanız gerekiyor.');
 
     const roomRef = doc(db, 'rooms', roomId);
-    let snap;
-    try {
-      snap = await getDocFromServer(roomRef);
-    } catch (err) {
-      throw mapFirestoreError(err, 'Oda bilgisi alinamadi.');
+    let snap = await getDoc(roomRef);
+    if (!snap.exists()) {
+      try {
+        snap = await withTimeout(getDocFromServer(roomRef), 4000);
+      } catch {
+        throw new Error('Oda bulunamadı.');
+      }
     }
     if (!snap.exists()) throw new Error('Oda bulunamadı.');
 
@@ -407,7 +404,8 @@ export const roomService = {
       lastActivity: 'şimdi',
     });
 
-    const updated = await confirmServerDocument(roomRef, 'Katilim');
+    const updated = await getDoc(roomRef);
+    verifyOnServerLater(roomRef, 'Katilim');
     return mapRoomDoc(updated, resolvedUid);
   },
 
@@ -419,7 +417,7 @@ export const roomService = {
       throw new Error('Firebase yapılandırılmamış.');
     }
 
-    await waitForAuthReady();
+    await waitForAuthReady(2000);
     const resolvedUid = resolveAuthUid(uid);
     if (!resolvedUid) throw new Error('Oturum açmanız gerekiyor.');
 
@@ -434,11 +432,13 @@ export const roomService = {
       limit(1),
     );
 
-    let snap;
-    try {
-      snap = await getDocsFromServer(q);
-    } catch (err) {
-      throw mapFirestoreError(err, 'Davet kodu sorgulanamadi.');
+    let snap = await getDocs(q);
+    if (snap.empty) {
+      try {
+        snap = await withTimeout(getDocsFromServer(q), 4000);
+      } catch (err) {
+        throw mapFirestoreError(err, 'Davet kodu sorgulanamadi.');
+      }
     }
 
     if (snap.empty) {
@@ -471,11 +471,6 @@ export const roomService = {
     }
 
     await deleteDoc(roomRef);
-    await waitForPendingWrites(db);
-    const remaining = await getDocFromServer(roomRef);
-    if (remaining.exists()) {
-      throw new Error('Grup sunucudan silinemedi.');
-    }
   },
 
   /**

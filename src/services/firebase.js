@@ -73,13 +73,16 @@ if (hasConfig) {
 
 export { auth, db, hasConfig as isFirebaseConfigured };
 
-/** Firebase Auth oturumu tamamen yuklenene kadar bekler */
-export async function waitForAuthReady() {
+/** Firebase Auth oturumu tamamen yuklenene kadar bekler (max 2.5sn) */
+export async function waitForAuthReady(maxMs = 2500) {
   if (!auth) return;
+  if (auth.currentUser) return;
   await ensureAuthPersistence();
-  if (typeof auth.authStateReady === 'function') {
-    await auth.authStateReady();
-  }
+  if (typeof auth.authStateReady !== 'function') return;
+  await Promise.race([
+    auth.authStateReady(),
+    new Promise((resolve) => { setTimeout(resolve, maxMs); }),
+  ]);
 }
 
 /** Gecerli Firebase Auth uid — yoksa null */

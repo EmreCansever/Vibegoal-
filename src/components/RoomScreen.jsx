@@ -1107,7 +1107,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
       if (cancelled) return
       setMyRoomsLoading(false)
       setPublicRoomsLoading(false)
-    }, 12000)
+    }, 4000)
 
     const uid = currentUser?.uid
     if (uid) {
