@@ -18,6 +18,7 @@ import {
   where,
   arrayUnion,
   arrayRemove,
+  deleteField,
   serverTimestamp,
   limit,
   waitForPendingWrites,
@@ -29,7 +30,10 @@ import {
   isFirebaseConfigured,
   waitForAuthReady,
   resolveAuthUid,
+  fetchUserProfiles,
+  upsertUserDocument,
 } from './firebase';
+import { sortLeaderboard } from '../utils/scoringEngine';
 
 function formatLastActivity(val) {
   if (!val) return '';
@@ -56,6 +60,9 @@ function mapRoomDoc(docSnap, uid) {
   if (!data || typeof data !== 'object') return null;
 
   const memberIds = Array.isArray(data.memberIds) ? data.memberIds : [];
+  const memberProfiles = data.memberProfiles && typeof data.memberProfiles === 'object'
+    ? data.memberProfiles
+    : {};
 
   return {
     id: docSnap.id,
@@ -72,6 +79,8 @@ function mapRoomDoc(docSnap, uid) {
     isPublic: !!data.isPublic,
     inviteCode: data.inviteCode || '',
     ownerId: data.ownerId || '',
+    memberIds,
+    memberProfiles,
     isAdmin: data.ownerId === uid,
     isMember: uid ? memberIds.includes(uid) : false,
     myRank: Number(data.myRank) || 1,
@@ -124,6 +133,17 @@ function normalizeInviteCode(raw) {
   const trimmed = raw.trim().toUpperCase();
   const match = trimmed.match(/VG[-\w]+/);
   return match ? match[0].replace(/\s/g, '') : trimmed;
+}
+
+/** Auth oturumundan oda uyeleri icin gorunen ad/avatar */
+function authMemberSnapshot() {
+  const u = auth?.currentUser;
+  if (!u) return { username: 'Kullanıcı', avatar: '' };
+  const email = (u.email || '').toLowerCase().trim();
+  return {
+    username: u.displayName || email.split('@')[0] || 'Kullanıcı',
+    avatar: u.photoURL || '',
+  };
 }
 
 function mapFirestoreError(err, fallback) {
@@ -307,6 +327,62 @@ export const roomService = {
   },
 
   /**
+   * Tek bir odayi gercek zamanli dinler
+   */
+  subscribeRoom(roomId, uid, callback) {
+    if (!this.isAvailable() || !roomId) {
+      callback(null);
+      return () => {};
+    }
+
+    const roomRef = doc(db, 'rooms', roomId);
+    return onSnapshot(
+      roomRef,
+      (snap) => {
+        callback(snap.exists() ? mapRoomDoc(snap, uid) : null);
+      },
+      (err) => {
+        console.error('Oda detay dinleme:', err);
+        callback(null);
+      },
+    );
+  },
+
+  /**
+   * Oda uyelerinden liderlik tablosu olusturur (Firestore + oda snapshot)
+   */
+  async buildRoomLeaderboard(room, currentUserId, localMeProfile = null) {
+    const memberIds = Array.isArray(room?.memberIds) ? room.memberIds : [];
+    if (memberIds.length === 0) return [];
+
+    const memberProfiles = room?.memberProfiles || {};
+    const firestoreProfiles = await fetchUserProfiles(memberIds);
+    const profileByUid = Object.fromEntries(
+      firestoreProfiles.map((p) => [p.uid, p]),
+    );
+
+    const players = memberIds.map((uid) => {
+      const remote = profileByUid[uid] || {};
+      const cached = memberProfiles[uid] || {};
+      const local = uid === currentUserId ? localMeProfile : null;
+
+      return {
+        id: uid,
+        name: remote.username || cached.username || local?.username || 'Kullanıcı',
+        points: Number(remote.totalPoints ?? local?.totalPoints ?? 0),
+        correct: Number(remote.correct ?? local?.correct ?? 0),
+        total: Number(remote.total ?? local?.total ?? 0),
+        badge: remote.badge || local?.badge || '',
+        avatar: remote.avatar || cached.avatar || local?.avatar || '',
+        isMe: uid === currentUserId,
+      };
+    });
+
+    const sorted = sortLeaderboard(players);
+    return sorted.map((p, i) => ({ ...p, rank: i + 1 }));
+  },
+
+  /**
    * Yeni oda oluşturur ve Firestore'a yazar
    */
   async createRoom({
@@ -329,6 +405,7 @@ export const roomService = {
 
     const roomRef = doc(collection(db, 'rooms'));
     const inviteCode = generateInviteCode(name);
+    const ownerSnapshot = authMemberSnapshot();
 
     const payload = {
       name: name.trim(),
@@ -337,6 +414,9 @@ export const roomService = {
       isPublic: !!isPublic,
       ownerId: resolvedOwnerId,
       memberIds: [resolvedOwnerId],
+      memberProfiles: {
+        [resolvedOwnerId]: ownerSnapshot,
+      },
       members: 1,
       maxMembers: 20,
       inviteCode,
@@ -402,9 +482,14 @@ export const roomService = {
       throw new Error('Oda dolu.');
     }
 
+    if (auth?.currentUser) {
+      upsertUserDocument(auth.currentUser).catch(() => {});
+    }
+
     await updateDoc(roomRef, {
       memberIds: arrayUnion(resolvedUid),
       members: memberIds.length + 1,
+      [`memberProfiles.${resolvedUid}`]: authMemberSnapshot(),
       updatedAt: serverTimestamp(),
       lastActivity: 'şimdi',
     });
@@ -504,6 +589,7 @@ export const roomService = {
     await updateDoc(roomRef, {
       memberIds: arrayRemove(resolvedUid),
       members: newCount,
+      [`memberProfiles.${resolvedUid}`]: deleteField(),
       updatedAt: serverTimestamp(),
     });
   },

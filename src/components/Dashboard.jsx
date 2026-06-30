@@ -123,11 +123,6 @@ const BADGES = {
   kahraman:{ icon: '⚡', label: 'Son Dakika Kahramanı',       color: '#f43f5e' },
 }
 
-const LEADERBOARD_INIT = []
-
-/* ─────────────────────────────────────────────────
-   DYNAMIC LEADERBOARD LOADER
-───────────────────────────────────────────────── */
 function getDynamicLeaderboard(currentUserId) {
   try {
     const users = JSON.parse(localStorage.getItem('vg_users') || '{}')
@@ -172,6 +167,25 @@ function getDynamicLeaderboard(currentUserId) {
   } catch (e) {
     return []
   }
+}
+
+function loadActiveRoom(uid) {
+  try {
+    const raw = localStorage.getItem(`vg_active_room_${uid}`)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function saveActiveRoom(uid, room) {
+  try {
+    if (room?.id) {
+      localStorage.setItem(`vg_active_room_${uid}`, JSON.stringify({ id: room.id, name: room.name || '' }))
+    } else {
+      localStorage.removeItem(`vg_active_room_${uid}`)
+    }
+  } catch { /* ignore */ }
 }
 
 /* ─────────────────────────────────────────────────
@@ -2211,8 +2225,12 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [scoringBreakdowns, setBreaks]  = useState({})       // { qId: breakdown }
   const [toastEvent, setToastEvent]     = useState(null)
   const [totalPoints, setTotalPoints]   = useState(0)
-  const [leaderboard, setLeaderboard]   = useState(() => getDynamicLeaderboard(currentUser.uid))
+  const [leaderboard, setLeaderboard]   = useState([])
   const [myGroups, setMyGroups]         = useState([])
+  const [activeRoom, setActiveRoom]     = useState(() => {
+    if (params.roomId) return { id: params.roomId, name: params.roomName || '' }
+    return loadActiveRoom(currentUser.uid)
+  })
 
   useEffect(() => {
     let unsub = () => {}
@@ -2233,6 +2251,52 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       unsub()
     }
   }, [currentUser?.uid])
+
+  useEffect(() => {
+    if (params.roomId) {
+      const next = { id: params.roomId, name: params.roomName || '' }
+      setActiveRoom(next)
+      saveActiveRoom(currentUser.uid, next)
+    }
+  }, [params.roomId, params.roomName, currentUser.uid])
+
+  useEffect(() => {
+    if (activeRoom?.id || !myGroups.length) return
+    const first = myGroups.find((g) => g?.id)
+    if (!first) return
+    const next = { id: first.id, name: first.name || '' }
+    setActiveRoom(next)
+    saveActiveRoom(currentUser.uid, next)
+  }, [myGroups, activeRoom?.id, currentUser.uid])
+
+  useEffect(() => {
+    if (!activeRoom?.id || !currentUser?.uid) {
+      setLeaderboard([])
+      return undefined
+    }
+
+    let cancelled = false
+    let refreshTimer = null
+
+    const refreshBoard = async (room) => {
+      if (cancelled || !room) return
+      const localProfile = dbService.getProfile(currentUser.uid)
+      const board = await roomService.buildRoomLeaderboard(room, currentUser.uid, localProfile)
+      if (!cancelled) setLeaderboard(board)
+    }
+
+    const unsub = roomService.subscribeRoom(activeRoom.id, currentUser.uid, (room) => {
+      refreshBoard(room)
+      if (refreshTimer) clearInterval(refreshTimer)
+      refreshTimer = setInterval(() => refreshBoard(room), 20000)
+    })
+
+    return () => {
+      cancelled = true
+      if (refreshTimer) clearInterval(refreshTimer)
+      unsub()
+    }
+  }, [activeRoom?.id, currentUser?.uid])
 
   /* ── userPredictions — maç bazlı skor tahmini ── */
   // { [matchId]: { homeScore: number, awayScore: number } }
@@ -2279,10 +2343,6 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   useEffect(() => {
     const profile = dbService.getProfile(currentUser.uid) || dbService.initProfile(currentUser.uid, currentUser.username)
     setTotalPoints(profile.totalPoints || 0)
-    
-    // Dynamically build the leaderboard from registered users
-    const dynLeaderboard = getDynamicLeaderboard(currentUser.uid)
-    setLeaderboard(dynLeaderboard)
 
     const savedPreds = dbService.getPredictions(currentUser.uid)
     setMatchPredictions(savedPreds)
@@ -2554,7 +2614,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const successRate = myPlayer && myPlayer.total > 0 ? Math.round((myPlayer.correct / myPlayer.total) * 100) : 0
   const dynBadge    = computeDynamicBadge({ total: myPlayer?.total || 0, correct: myPlayer?.correct || 0 })
 
-  const roomName = params.roomName || ''
+  const roomName = activeRoom?.name || ''
 
   // Mockup HOME için türetilen veriler (ekstra veri yok — gerçek state'ten)
   const featuredMatch = matches && matches.length > 0 ? matches[0] : null
@@ -2786,7 +2846,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
         )}
 
         {/* ── Room context bar ────────────────── */}
-        {params.roomName && (
+        {activeRoom?.id && (
           <div style={{
             margin: '12px 20px 0',
             padding: '10px 16px',
@@ -2862,10 +2922,16 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                   {(Array.isArray(myGroups) ? myGroups : []).filter(g => g?.id).map(g => (
                     <button
                       key={g?.id}
-                      onClick={() => onNavigate('rooms')}
+                      onClick={() => {
+                        const next = { id: g.id, name: g.name || '' }
+                        setActiveRoom(next)
+                        saveActiveRoom(currentUser.uid, next)
+                        setActiveTab('matches')
+                      }}
                       style={{
                         width: 92, padding: '14px 8px', borderRadius: 16, flexShrink: 0,
-                        background: t.surface, border: `1px solid ${t.border}`,
+                        background: activeRoom?.id === g.id ? t.accentSoft : t.surface,
+                        border: `1px solid ${activeRoom?.id === g.id ? t.accentBorder : t.border}`,
                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer',
                         whiteSpace: 'normal',
                       }}
@@ -3132,7 +3198,11 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                       <span style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>PUAN</span>
                     </div>
 
-                    {leaderboard.map((p, idx) => {
+                    {leaderboard.length === 0 ? (
+                      <div style={{ padding: '24px 20px', textAlign: 'center', color: '#666', fontSize: 13 }}>
+                        Üyeler yükleniyor...
+                      </div>
+                    ) : leaderboard.map((p, idx) => {
                       const rankColor = p.rank === 1 ? '#facc15' : p.rank === 2 ? '#94a3b8' : p.rank === 3 ? '#fb923c' : '#555'
                       const rate = Math.round((p.correct / Math.max(p.total, 1)) * 100)
                       return (

@@ -159,6 +159,23 @@ export async function upsertUserDocument(firebaseUser, { username } = {}) {
   }
 }
 
+/** Birden fazla kullanici profilini paralel okur */
+export async function fetchUserProfiles(uids = []) {
+  if (!db || !Array.isArray(uids) || uids.length === 0) return [];
+  const unique = [...new Set(uids.filter(Boolean))];
+  const snaps = await Promise.all(
+    unique.map(async (uid) => {
+      try {
+        const snap = await getDoc(doc(db, 'users', uid));
+        return snap.exists() ? { uid, ...snap.data() } : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return snaps.filter(Boolean);
+}
+
 /** Firestore'dan kullanıcı profili okur — hata olursa null döner */
 export async function fetchUserDocument(uid) {
   if (!db || !uid) return null;
