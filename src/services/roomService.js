@@ -22,14 +22,26 @@ import {
 import { db, isFirebaseConfigured } from './firebase';
 
 function mapRoomDoc(docSnap, uid) {
-  const data = docSnap.data();
+  if (!docSnap?.id) return null;
+
+  let data = {};
+  try {
+    data = typeof docSnap.data === 'function' ? docSnap.data() : (docSnap.data ?? {});
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+
+  const members = data.members ?? (Array.isArray(data.memberIds) ? data.memberIds.length : 0);
+
   return {
     id: docSnap.id,
     name: data.name || '',
     league: data.league || '',
     leagueId: data.leagueId || 'wc2026',
-    members: data.members ?? (data.memberIds?.length || 0),
+    members,
     maxMembers: data.maxMembers ?? 20,
+    totalPoints: Number(data.totalPoints) || 0,
     avatar: data.avatar || '✨',
     color: data.color || '#a3e635',
     description: data.description || '',
@@ -38,10 +50,35 @@ function mapRoomDoc(docSnap, uid) {
     inviteCode: data.inviteCode || '',
     ownerId: data.ownerId || '',
     isAdmin: data.ownerId === uid,
-    myRank: 1,
+    myRank: Number(data.myRank) || 1,
     hot: !!data.hot,
     requested: false,
   };
+}
+
+/** Liste render öncesi güvenli oda dizisi */
+export function normalizeRoomList(rooms) {
+  if (!Array.isArray(rooms)) return [];
+  return rooms
+    .map((room) => {
+      if (!room?.id) return null;
+      return {
+        ...room,
+        id: room.id,
+        name: room.name ?? '',
+        league: room.league ?? '',
+        leagueId: room.leagueId ?? 'wc2026',
+        members: Number(room.members) || 0,
+        maxMembers: Number(room.maxMembers) || 20,
+        totalPoints: Number(room.totalPoints) || 0,
+        avatar: room.avatar ?? '✨',
+        color: room.color ?? '#a3e635',
+        description: room.description ?? '',
+        lastActivity: room.lastActivity ?? '',
+        myRank: Number(room.myRank) || 1,
+      };
+    })
+    .filter(Boolean);
 }
 
 function generateInviteCode(name) {
@@ -81,7 +118,10 @@ export const roomService = {
     return onSnapshot(
       q,
       (snap) => {
-        callback(snap.docs.map((d) => mapRoomDoc(d, uid)));
+        const list = snap.docs
+          .map((d) => mapRoomDoc(d, uid))
+          .filter(Boolean);
+        callback(normalizeRoomList(list));
       },
       (err) => {
         console.error('Oda dinleme hatası:', err);
@@ -105,7 +145,10 @@ export const roomService = {
     return onSnapshot(
       q,
       (snap) => {
-        callback(snap.docs.map((d) => mapRoomDoc(d, null)));
+        const list = snap.docs
+          .map((d) => mapRoomDoc(d, null))
+          .filter(Boolean);
+        callback(normalizeRoomList(list));
       },
       (err) => {
         console.error('Genel oda dinleme hatası:', err);
@@ -143,6 +186,7 @@ export const roomService = {
       members: 1,
       maxMembers: 20,
       inviteCode,
+      totalPoints: 0,
       avatar: '✨',
       color: accentColor || '#a3e635',
       description: isPublic
@@ -155,7 +199,8 @@ export const roomService = {
 
     await setDoc(roomRef, payload);
     const saved = await getDoc(roomRef);
-    return mapRoomDoc(saved, ownerId);
+    const mapped = mapRoomDoc(saved, ownerId);
+    return mapped || normalizeRoomList([{ id: roomRef.id, ...payload, totalPoints: 0 }])[0];
   },
 
   /**

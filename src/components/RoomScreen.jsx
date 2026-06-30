@@ -125,8 +125,16 @@ function GlassPanel({ children, style = {} }) {
 function MyRoomCard({ room, onEnter, onLeave, idx }) {
   const [leaving, setLeaving] = useState(false)
 
+  if (!room?.id) return null
+
+  const roomColor = room?.color || '#a3e635'
+  const memberCount = Number(room?.members) || 0
+  const maxMembers = Number(room?.maxMembers) || 20
+  const totalPoints = Number(room?.totalPoints) || 0
+
   function handleLeave(e) {
     e.stopPropagation()
+    if (!room?.id) return
     setLeaving(true)
     setTimeout(() => { setLeaving(false); onLeave(room.id) }, 400)
   }
@@ -134,7 +142,7 @@ function MyRoomCard({ room, onEnter, onLeave, idx }) {
   return (
     <div
       className="room-card"
-      onClick={() => onEnter(room)}
+      onClick={() => room && onEnter(room)}
       style={{
         display: 'flex', alignItems: 'center', gap: 14,
         padding: '16px 18px',
@@ -149,22 +157,22 @@ function MyRoomCard({ room, onEnter, onLeave, idx }) {
       {/* Avatar circle */}
       <div style={{
         width: 48, height: 48, borderRadius: 14, flexShrink: 0,
-        background: `${room.color}18`,
-        border: `1.5px solid ${room.color}44`,
+        background: `${roomColor}18`,
+        border: `1.5px solid ${roomColor}44`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 22,
-        boxShadow: `0 0 14px ${room.color}22`,
+        boxShadow: `0 0 14px ${roomColor}22`,
       }}>
-        {room.avatar}
+        {room?.avatar ?? '✨'}
       </div>
 
       {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
           <span style={{ color: '#fff', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {room.name}
+            {room?.name || 'Oda'}
           </span>
-          {room.isAdmin && (
+          {room?.isAdmin && (
             <span style={{
               padding: '1px 7px', borderRadius: 50,
               background: 'rgba(250,204,21,0.15)', border: '1px solid rgba(250,204,21,0.3)',
@@ -173,12 +181,12 @@ function MyRoomCard({ room, onEnter, onLeave, idx }) {
           )}
         </div>
         <div style={{ fontSize: 11, color: '#666', marginBottom: 6 }}>
-          {room.league} · {room.members}/{room.maxMembers} üye
+          {room?.league || '—'} · {memberCount}/{maxMembers} üye
         </div>
-        <ProgressBar value={room.members} max={room.maxMembers} color={room.color} />
+        <ProgressBar value={memberCount} max={maxMembers} color={roomColor} />
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 5 }}>
-          <span style={{ fontSize: 10, color: '#555' }}>#{room.myRank} sırada · {room.totalPoints.toLocaleString()} puan</span>
-          <span style={{ fontSize: 10, color: '#444' }}>{room.lastActivity}</span>
+          <span style={{ fontSize: 10, color: '#555' }}>#{room?.myRank ?? 1} sırada · {totalPoints.toLocaleString()} puan</span>
+          <span style={{ fontSize: 10, color: '#444' }}>{room?.lastActivity || '—'}</span>
         </div>
       </div>
 
@@ -206,19 +214,44 @@ function MyRoomCard({ room, onEnter, onLeave, idx }) {
   )
 }
 
-function MyRoomsTab({ rooms, onEnter, onLeave }) {
+function RoomsEmptyState({ icon, title, subtitle }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '60px 20px', color: '#555' }}>
+      <div style={{ fontSize: 48, marginBottom: 12 }}>{icon}</div>
+      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6, color: '#888' }}>{title}</div>
+      <div style={{ fontSize: 12 }}>{subtitle}</div>
+    </div>
+  )
+}
+
+function RoomsLoadingState() {
+  return (
+    <div style={{ textAlign: 'center', padding: '48px 20px', color: '#666' }}>
+      <div style={{ fontSize: 28, marginBottom: 10, animation: 'spin-slow 1s linear infinite', display: 'inline-block' }}>⚙️</div>
+      <div style={{ fontWeight: 600, fontSize: 13 }}>Odalar yükleniyor...</div>
+    </div>
+  )
+}
+
+function MyRoomsTab({ rooms, onEnter, onLeave, loading }) {
+  const safeRooms = Array.isArray(rooms) ? rooms.filter((r) => r?.id) : []
+
+  if (loading) {
+    return <RoomsLoadingState />
+  }
+
   return (
     <div style={{ padding: '0 0 24px' }}>
-      {rooms.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#555' }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>🏜️</div>
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Henüz hiç odana yok</div>
-          <div style={{ fontSize: 12 }}>Yeni bir grup oluştur veya arkadaşının linkiyle katıl.</div>
-        </div>
+      {safeRooms.length === 0 ? (
+        <RoomsEmptyState
+          icon="🏜️"
+          title="Henüz oda oluşturulmadı"
+          subtitle="Yeni bir grup oluştur veya arkadaşının linkiyle katıl."
+        />
       ) : (
         <GlassPanel style={{ margin: '0 20px', borderRadius: 20 }}>
-          {rooms.map((r, i) => (
-            <MyRoomCard key={r.id} room={r} onEnter={onEnter} onLeave={onLeave} idx={i} />
+          {safeRooms.map((r, i) => (
+            <MyRoomCard key={r?.id} room={r} onEnter={onEnter} onLeave={onLeave} idx={i} />
           ))}
         </GlassPanel>
       )}
@@ -231,8 +264,14 @@ function MyRoomsTab({ rooms, onEnter, onLeave }) {
 ───────────────────────────────────────────────── */
 
 function PublicRoomCard({ room, idx, onRequestSent }) {
-  const [sent, setSent] = useState(room.requested)
-  const fillPct = Math.round((room.members / room.maxMembers) * 100)
+  const [sent, setSent] = useState(room?.requested)
+
+  if (!room?.id) return null
+
+  const roomColor = room?.color || '#a3e635'
+  const memberCount = Number(room?.members) || 0
+  const maxMembers = Number(room?.maxMembers) || 20
+  const fillPct = maxMembers > 0 ? Math.round((memberCount / maxMembers) * 100) : 0
   const almostFull = fillPct >= 85
 
   function handleRequest() {
@@ -260,7 +299,7 @@ function PublicRoomCard({ room, idx, onRequestSent }) {
       <div style={{
         position: 'absolute', top: -20, right: -20,
         width: 80, height: 80, borderRadius: '50%',
-        background: `radial-gradient(circle,${room.color}15,transparent)`,
+        background: `radial-gradient(circle,${roomColor}15,transparent)`,
         pointerEvents: 'none',
       }} />
 
@@ -268,19 +307,19 @@ function PublicRoomCard({ room, idx, onRequestSent }) {
         {/* Avatar */}
         <div style={{
           width: 46, height: 46, borderRadius: 13, flexShrink: 0,
-          background: `${room.color}18`,
-          border: `1.5px solid ${room.color}40`,
+          background: `${roomColor}18`,
+          border: `1.5px solid ${roomColor}40`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 22,
         }}>
-          {room.avatar}
+          {room?.avatar ?? '✨'}
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Name row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
-            <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{room.name}</span>
-            {room.hot && (
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{room?.name || 'Oda'}</span>
+            {room?.hot && (
               <span style={{
                 padding: '2px 8px', borderRadius: 50,
                 background: 'rgba(244,63,94,0.2)', border: '1px solid rgba(244,63,94,0.4)',
@@ -290,19 +329,19 @@ function PublicRoomCard({ room, idx, onRequestSent }) {
             )}
           </div>
 
-          <div style={{ fontSize: 11, color: '#666', marginBottom: 6 }}>{room.league}</div>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 10, lineHeight: 1.5 }}>{room.description}</div>
+          <div style={{ fontSize: 11, color: '#666', marginBottom: 6 }}>{room?.league || '—'}</div>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 10, lineHeight: 1.5 }}>{room?.description || ''}</div>
 
           {/* Members progress */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <div style={{ flex: 1 }}>
-              <ProgressBar value={room.members} max={room.maxMembers} color={almostFull ? '#f43f5e' : room.color} />
+              <ProgressBar value={memberCount} max={maxMembers} color={almostFull ? '#f43f5e' : roomColor} />
             </div>
             <span style={{
               fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
               color: almostFull ? '#f43f5e' : '#666',
             }}>
-              {room.members.toLocaleString()} / {room.maxMembers.toLocaleString()}
+              {memberCount.toLocaleString()} / {maxMembers.toLocaleString()}
               {almostFull && ' 🔴'}
             </span>
           </div>
@@ -313,9 +352,9 @@ function PublicRoomCard({ room, idx, onRequestSent }) {
             onClick={handleRequest}
             style={{
               width: '100%', padding: '11px 0', borderRadius: 12,
-              border: sent ? '1px solid var(--vg-accent)' : `1px solid ${room.color}55`,
-              background: sent ? 'color-mix(in srgb, var(--vg-accent) 12%, transparent)' : `${room.color}18`,
-              color: sent ? 'var(--vg-accent)' : room.color,
+              border: sent ? '1px solid var(--vg-accent)' : `1px solid ${roomColor}55`,
+              background: sent ? 'color-mix(in srgb, var(--vg-accent) 12%, transparent)' : `${roomColor}18`,
+              color: sent ? 'var(--vg-accent)' : roomColor,
               fontFamily: 'Inter,sans-serif',
               fontWeight: 700, fontSize: 13,
               cursor: sent ? 'default' : 'pointer',
@@ -336,7 +375,7 @@ function PublicRoomCard({ room, idx, onRequestSent }) {
   )
 }
 
-function DiscoverTab({ theme, publicRooms = [], onJoinRoom }) {
+function DiscoverTab({ theme, publicRooms = [], onJoinRoom, loading }) {
   const t = theme || THEMES.slate
   const [filter, setFilter] = useState('all')
   const leagues = [
@@ -344,12 +383,18 @@ function DiscoverTab({ theme, publicRooms = [], onJoinRoom }) {
     ...LEAGUE_OPTIONS.map(l => ({ id: l.id, label: l.label.split(' ').slice(1).join(' ') })),
   ]
 
+  const safePublic = Array.isArray(publicRooms) ? publicRooms.filter((r) => r?.id) : []
+
   const filtered = filter === 'all'
-    ? publicRooms
-    : publicRooms.filter(r => {
+    ? safePublic
+    : safePublic.filter(r => {
         const opt = LEAGUE_OPTIONS.find(l => l.id === filter)
-        return opt && r.league === opt.label
+        return opt && r?.league === opt.label
       })
+
+  if (loading) {
+    return <RoomsLoadingState />
+  }
 
   return (
     <div style={{ padding: '0 20px 24px' }}>
@@ -380,7 +425,7 @@ function DiscoverTab({ theme, publicRooms = [], onJoinRoom }) {
           </div>
         ) : (
           filtered.map((r, i) => (
-            <PublicRoomCard key={r.id} room={r} idx={i} onRequestSent={onJoinRoom} />
+            <PublicRoomCard key={r?.id} room={r} idx={i} onRequestSent={onJoinRoom} />
           ))
         )}
       </div>
@@ -753,23 +798,50 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
   useEffect(() => { injectRoomStyles() }, [])
   const t = theme || THEMES.slate
 
-  const [myRooms, setMyRooms]       = useState([])
+  const uidRef = useRef(currentUser?.uid ?? null)
+  uidRef.current = currentUser?.uid ?? null
+
+  const [myRooms, setMyRooms] = useState([])
   const [publicRooms, setPublicRooms] = useState([])
-
-  useEffect(() => {
-    if (!currentUser?.uid) {
-      setMyRooms([])
-      return undefined
-    }
-    return roomService.subscribeUserRooms(currentUser.uid, setMyRooms)
-  }, [currentUser?.uid])
-
-  useEffect(() => {
-    return roomService.subscribePublicRooms(setPublicRooms)
-  }, [])
-  const [activeTab, setActiveTab]   = useState('mine')
+  const [roomsLoading, setRoomsLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('mine')
   const [showCreate, setShowCreate] = useState(false)
-  const [toast, setToast]           = useState(null)
+  const [toast, setToast] = useState(null)
+
+  useEffect(() => {
+    let unsubUser = () => {}
+    let unsubPublic = () => {}
+    let cancelled = false
+
+    setRoomsLoading(true)
+
+    const handleUserRooms = (rooms) => {
+      if (cancelled) return
+      setMyRooms(Array.isArray(rooms) ? rooms : [])
+      setRoomsLoading(false)
+    }
+
+    const handlePublicRooms = (rooms) => {
+      if (cancelled) return
+      setPublicRooms(Array.isArray(rooms) ? rooms : [])
+    }
+
+    const uid = uidRef.current
+    if (uid) {
+      unsubUser = roomService.subscribeUserRooms(uid, handleUserRooms)
+    } else {
+      setMyRooms([])
+      setRoomsLoading(false)
+    }
+
+    unsubPublic = roomService.subscribePublicRooms(handlePublicRooms)
+
+    return () => {
+      cancelled = true
+      unsubUser()
+      unsubPublic()
+    }
+  }, [])
 
   const LEAGUE_MAPPING = {
     '🌍 Dünya Kupası 2026': 'wc2026',
@@ -782,8 +854,9 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
   }
 
   function handleEnterRoom(room) {
-    const leagueId = room.leagueId || LEAGUE_MAPPING[room.league] || 'wc2026'
-    onNavigate('dashboard', { roomId: room.id, roomName: room.name, leagueId })
+    if (!room?.id) return
+    const leagueId = room?.leagueId || LEAGUE_MAPPING[room?.league] || 'wc2026'
+    onNavigate('dashboard', { roomId: room.id, roomName: room?.name || 'Oda', leagueId })
   }
 
   async function handleLeaveRoom(id) {
@@ -817,13 +890,13 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
   }
 
   async function handleJoined(room) {
-    if (!currentUser?.uid) return
+    if (!currentUser?.uid || !room?.id) return
     try {
       const joinedRoom = await roomService.joinRoom(room.id, currentUser.uid)
-      setToast(`🎉 "${joinedRoom.name}" odasına katıldın! Dashboard açılıyor...`)
+      setToast(`🎉 "${joinedRoom?.name || room?.name || 'Oda'}" odasına katıldın! Dashboard açılıyor...`)
       setTimeout(() => {
         setToast(null)
-        onNavigate('dashboard', { roomId: joinedRoom.id, roomName: joinedRoom.name })
+        onNavigate('dashboard', { roomId: joinedRoom?.id || room.id, roomName: joinedRoom?.name || room?.name })
       }, 1500)
     } catch (err) {
       console.error('Odaya katılma hatası:', err)
@@ -920,8 +993,8 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
             marginBottom: 2,
           }}>
             {[
-              { id: 'mine',    label: '🏠 Gruplarım',      count: myRooms.length },
-              { id: 'discover', label: '🔍 Odaları Keşfet', count: publicRooms.length },
+              { id: 'mine',    label: '🏠 Gruplarım',      count: myRooms?.length ?? 0 },
+              { id: 'discover', label: '🔍 Odaları Keşfet', count: publicRooms?.length ?? 0 },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -960,8 +1033,8 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
 
         {/* ── TAB CONTENT ────────────────────────── */}
         {activeTab === 'mine'
-          ? <MyRoomsTab rooms={myRooms} onEnter={handleEnterRoom} onLeave={handleLeaveRoom} />
-          : <DiscoverTab theme={t} publicRooms={publicRooms} onJoinRoom={handleJoined} />
+          ? <MyRoomsTab rooms={myRooms} onEnter={handleEnterRoom} onLeave={handleLeaveRoom} loading={roomsLoading} />
+          : <DiscoverTab theme={t} publicRooms={publicRooms} onJoinRoom={handleJoined} loading={roomsLoading} />
         }
       </div>
 

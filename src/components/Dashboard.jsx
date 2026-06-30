@@ -2215,12 +2215,24 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [myGroups, setMyGroups]         = useState([])
 
   useEffect(() => {
+    let unsub = () => {}
+    let cancelled = false
+
     if (!currentUser?.uid) {
       setMyGroups([])
       return undefined
     }
-    return roomService.subscribeUserRooms(currentUser.uid, setMyGroups)
-  }, [currentUser?.uid])
+
+    unsub = roomService.subscribeUserRooms(currentUser.uid, (rooms) => {
+      if (cancelled) return
+      setMyGroups(Array.isArray(rooms) ? rooms.filter((g) => g?.id) : [])
+    })
+
+    return () => {
+      cancelled = true
+      unsub()
+    }
+  }, [])
 
   /* ── userPredictions — maç bazlı skor tahmini ── */
   // { [matchId]: { homeScore: number, awayScore: number } }
@@ -2853,9 +2865,9 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                       <span style={{ fontSize: 10.5, color: '#fff', fontWeight: 700, lineHeight: 1.2, textAlign: 'center' }}>Grup Sohbeti</span>
                     </button>
                   )}
-                  {myGroups.map(g => (
+                  {(Array.isArray(myGroups) ? myGroups : []).filter(g => g?.id).map(g => (
                     <button
-                      key={g.id}
+                      key={g?.id}
                       onClick={() => onNavigate('rooms')}
                       style={{
                         width: 92, padding: '14px 8px', borderRadius: 16, flexShrink: 0,
@@ -2864,8 +2876,8 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                         whiteSpace: 'normal',
                       }}
                     >
-                      <span style={{ fontSize: 22 }}>{g.avatar || '👥'}</span>
-                      <span style={{ fontSize: 10.5, color: '#fff', fontWeight: 700, lineHeight: 1.2, textAlign: 'center', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{g.name}</span>
+                      <span style={{ fontSize: 22 }}>{g?.avatar || '👥'}</span>
+                      <span style={{ fontSize: 10.5, color: '#fff', fontWeight: 700, lineHeight: 1.2, textAlign: 'center', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{g?.name || 'Grup'}</span>
                     </button>
                   ))}
                   <button
