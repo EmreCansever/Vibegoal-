@@ -154,11 +154,19 @@ export const authService = {
         const firebaseUser = await loginWithEmail({ email, password });
         const sessionUser = await mapFirebaseUserToSession(firebaseUser);
         cacheSessionUser(sessionUser);
-        const doc = await fetchUserDocument(sessionUser.uid);
-        if (doc) profileToCache(sessionUser.uid, doc);
-        else dbService.initProfile(sessionUser.uid, sessionUser.username);
+        dbService.initProfile(sessionUser.uid, sessionUser.username);
         return { success: true, user: sessionUser };
       } catch (err) {
+        const code = err?.code || '';
+        if (
+          code === 'auth/invalid-credential' ||
+          code === 'auth/user-not-found' ||
+          code === 'auth/wrong-password' ||
+          code === 'auth/invalid-login-credentials'
+        ) {
+          const local = this._localLogin({ email, password });
+          if (local.success) return local;
+        }
         return { success: false, error: err };
       }
     }

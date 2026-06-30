@@ -12,6 +12,7 @@ import {
   onAuthStateChanged,
   fetchSignInMethodsForEmail,
   sendPasswordResetEmail,
+  updateProfile,
   deleteUser,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
@@ -85,58 +86,72 @@ export function ensureAuthPersistence() {
 export async function upsertUserDocument(firebaseUser, { username } = {}) {
   if (!db || !firebaseUser?.uid) return null;
 
-  const ref = doc(db, 'users', firebaseUser.uid);
-  const existing = await getDoc(ref);
-  const email = (firebaseUser.email || '').toLowerCase().trim();
-  const resolvedUsername =
-    username?.trim() ||
-    firebaseUser.displayName ||
-    email.split('@')[0] ||
-    'Kullanıcı';
+  try {
+    const ref = doc(db, 'users', firebaseUser.uid);
+    const existing = await getDoc(ref);
+    const email = (firebaseUser.email || '').toLowerCase().trim();
+    const resolvedUsername =
+      username?.trim() ||
+      firebaseUser.displayName ||
+      email.split('@')[0] ||
+      'Kullanıcı';
 
-  if (existing.exists()) {
-    const data = existing.data();
-    const patch = {
-      email: email || data.email || '',
+    if (existing.exists()) {
+      const data = existing.data();
+      const patch = {
+        email: email || data.email || '',
+        updatedAt: serverTimestamp(),
+      };
+      if (username?.trim()) patch.username = username.trim();
+      if (firebaseUser.photoURL && !data.avatar) patch.avatar = firebaseUser.photoURL;
+      await setDoc(ref, patch, { merge: true });
+      return { ...data, ...patch, uid: firebaseUser.uid };
+    }
+
+    const profile = {
+      uid: firebaseUser.uid,
+      username: resolvedUsername,
+      email,
+      avatar: firebaseUser.photoURL || '',
+      totalPoints: 0,
+      correct: 0,
+      total: 0,
+      badge: '',
+      createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    if (username?.trim()) patch.username = username.trim();
-    if (firebaseUser.photoURL && !data.avatar) patch.avatar = firebaseUser.photoURL;
-    await setDoc(ref, patch, { merge: true });
-    return { ...data, ...patch, uid: firebaseUser.uid };
+    await setDoc(ref, profile);
+    return profile;
+  } catch (err) {
+    console.warn('Firestore users dökümanı yazılamadı:', err);
+    return null;
   }
-
-  const profile = {
-    uid: firebaseUser.uid,
-    username: resolvedUsername,
-    email,
-    avatar: firebaseUser.photoURL || '',
-    totalPoints: 0,
-    correct: 0,
-    total: 0,
-    badge: '',
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
-  await setDoc(ref, profile);
-  return profile;
 }
 
-/** Firestore'dan kullanıcı profili okur */
+/** Firestore'dan kullanıcı profili okur — hata olursa null döner */
 export async function fetchUserDocument(uid) {
   if (!db || !uid) return null;
-  const snap = await getDoc(doc(db, 'users', uid));
-  return snap.exists() ? snap.data() : null;
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    return snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.warn('Firestore profil okunamadı:', err);
+    return null;
+  }
 }
 
 /** Firestore users/{uid} kısmi güncelleme */
 export async function patchUserDocument(uid, updates) {
   if (!db || !uid) return;
-  await setDoc(
-    doc(db, 'users', uid),
-    { ...updates, updatedAt: serverTimestamp() },
-    { merge: true },
-  );
+  try {
+    await setDoc(
+      doc(db, 'users', uid),
+      { ...updates, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  } catch (err) {
+    console.warn('Firestore profil güncellenemedi:', err);
+  }
 }
 
 /**
@@ -173,8 +188,23 @@ export async function registerWithEmail({ email, password, username }) {
     throw new Error('Firebase Authentication konfigüre edilmemiş! Lütfen .env dosyasını geçerli Firebase anahtarlarıyla güncelleyin.');
   }
   await ensureAuthPersistence();
-  const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-  await upsertUserDocument(cred.user, { username });
+  const normalizedEmail = email.trim().toLowerCase();
+  const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+
+  if (username?.trim()) {
+    try {
+      await updateProfile(cred.user, { displayName: username.trim() });
+    } catch (err) {
+      console.warn('Auth displayName güncellenemedi:', err);
+    }
+  }
+
+  try {
+    await upsertUserDocument(cred.user, { username });
+  } catch (err) {
+    console.warn('Firestore profil oluşturulamadı (Auth hesabı oluşturuldu):', err);
+  }
+
   return cred.user;
 }
 
@@ -186,7 +216,8 @@ export async function loginWithEmail({ email, password }) {
     throw new Error('Firebase Authentication konfigüre edilmemiş! Lütfen .env dosyasını geçerli Firebase anahtarlarıyla güncelleyin.');
   }
   await ensureAuthPersistence();
-  const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+  const normalizedEmail = email.trim().toLowerCase();
+  const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
   return cred.user;
 }
 
@@ -211,15 +242,26 @@ export function subscribeAuthState(callback) {
 export async function mapFirebaseUserToSession(firebaseUser) {
   if (!firebaseUser) return null;
 
-  let profile = await fetchUserDocument(firebaseUser.uid);
-  if (!profile) {
-    profile = await upsertUserDocument(firebaseUser);
+  let profile = null;
+  try {
+    profile = await fetchUserDocument(firebaseUser.uid);
+    if (!profile) {
+      profile = await upsertUserDocument(firebaseUser);
+    }
+  } catch (err) {
+    console.warn('Firestore profil senkronizasyonu atlandı:', err);
   }
+
+  const email = (firebaseUser.email || profile?.email || '').toLowerCase().trim();
 
   return {
     uid: firebaseUser.uid,
-    username: profile?.username || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Kullanıcı',
-    email: (firebaseUser.email || profile?.email || '').toLowerCase(),
+    username:
+      profile?.username ||
+      firebaseUser.displayName ||
+      email.split('@')[0] ||
+      'Kullanıcı',
+    email,
     avatar: profile?.avatar || firebaseUser.photoURL || '',
   };
 }
