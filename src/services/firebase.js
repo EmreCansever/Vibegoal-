@@ -95,16 +95,19 @@ export function resolveAuthUid(fallbackUid) {
   return getFirebaseAuthUid() || fallbackUid || null;
 }
 
-/** Tarayıcıda oturumun kalıcı kalmasını garanti eder */
-export function ensureAuthPersistence() {
-  if (!auth) return Promise.resolve();
+/** Tarayıcıda oturumun kalıcı kalmasını garanti eder (max 1.5sn bekler) */
+export async function ensureAuthPersistence() {
+  if (!auth) return;
   if (!authPersistenceReady) {
     authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch((err) => {
       authPersistenceReady = null;
       throw err;
     });
   }
-  return authPersistenceReady;
+  await Promise.race([
+    authPersistenceReady,
+    new Promise((resolve) => { setTimeout(resolve, 1500); }),
+  ]);
 }
 
 /**
@@ -224,7 +227,12 @@ export async function registerWithEmail({ email, password, username }) {
   }
   await ensureAuthPersistence();
   const normalizedEmail = email.trim().toLowerCase();
-  const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+  const cred = await Promise.race([
+    createUserWithEmailAndPassword(auth, normalizedEmail, password),
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Kayıt zaman aşımına uğradı. İnternet bağlantınızı kontrol edip tekrar deneyin.')), 15000);
+    }),
+  ]);
 
   if (username?.trim()) {
     try {
@@ -252,7 +260,12 @@ export async function loginWithEmail({ email, password }) {
   }
   await ensureAuthPersistence();
   const normalizedEmail = email.trim().toLowerCase();
-  const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+  const cred = await Promise.race([
+    signInWithEmailAndPassword(auth, normalizedEmail, password),
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Giriş zaman aşımına uğradı. İnternet bağlantınızı kontrol edip tekrar deneyin.')), 15000);
+    }),
+  ]);
   return cred.user;
 }
 

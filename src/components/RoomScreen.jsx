@@ -638,6 +638,16 @@ function CreateRoomModal({ onClose, onCreate, theme }) {
   const [error, setError]     = useState('')
   const [createdRoom, setCreatedRoom] = useState(null)
   const [copied, setCopied]   = useState(false)
+  const closeTimerRef = useRef(null)
+
+  useEffect(() => () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+  }, [])
+
+  function handleClose() {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    onClose()
+  }
 
   async function handleCreate() {
     if (!name.trim() || loading) return
@@ -647,7 +657,6 @@ function CreateRoomModal({ onClose, onCreate, theme }) {
       const result = await onCreate({ name: name.trim(), league, isPublic })
       setCreatedRoom(result)
       setDone(true)
-      setTimeout(() => onClose(), 4000)
     } catch (err) {
       console.error('Oda oluşturma hatası:', err)
       const code = err?.code || ''
@@ -663,14 +672,12 @@ function CreateRoomModal({ onClose, onCreate, theme }) {
 
   return (
     <>
-      {/* Overlay */}
+      {/* Overlay — blur yok (mobilde donmayı önler) */}
       <div
-        onClick={onClose}
+        onClick={handleClose}
         style={{
           position: 'fixed', inset: 0, zIndex: 300,
-          background: 'rgba(0,0,0,0.75)',
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
+          background: 'rgba(0,0,0,0.82)',
           animation: 'overlay-in 0.2s ease both',
         }}
       />
@@ -684,7 +691,7 @@ function CreateRoomModal({ onClose, onCreate, theme }) {
         borderRadius: '28px 28px 0 0',
         border: '1px solid rgba(255,255,255,0.1)',
         borderBottom: 'none',
-        padding: '28px 20px 40px',
+        padding: '28px 20px max(40px, calc(16px + env(safe-area-inset-bottom, 0px)))',
         animation: 'modal-in 0.3s cubic-bezier(.22,.61,.36,1) both',
         boxShadow: '0 -20px 60px rgba(0,0,0,0.6)',
         maxHeight: '90vh',
@@ -706,7 +713,7 @@ function CreateRoomModal({ onClose, onCreate, theme }) {
           </div>
           <button
             className="modal-close"
-            onClick={onClose}
+            onClick={handleClose}
             style={{
               width: 34, height: 34, borderRadius: 10,
               background: 'rgba(255,255,255,0.07)',
@@ -784,14 +791,26 @@ function CreateRoomModal({ onClose, onCreate, theme }) {
             )}
 
             {createdRoom?.isPublic ? (
-              <div style={{ fontSize: 11, color: '#666' }}>
+              <div style={{ fontSize: 11, color: '#666', marginBottom: 16 }}>
                 🌐 Grup &quot;Odaları Keşfet&quot; sekmesinde görünüyor.
               </div>
             ) : (
-              <div style={{ fontSize: 11, color: '#666' }}>
+              <div style={{ fontSize: 11, color: '#666', marginBottom: 16 }}>
                 🔒 Gizli grup — yalnızca davet kodu ile katılım sağlanır.
               </div>
             )}
+            <button
+              type="button"
+              onClick={handleClose}
+              style={{
+                width: '100%', padding: '14px', borderRadius: 14, border: 'none',
+                background: `linear-gradient(135deg,${t.accent},${t.accentAlt})`,
+                color: t.tabActiveText, fontWeight: 800, fontSize: 14, cursor: 'pointer',
+                fontFamily: 'Inter,sans-serif',
+              }}
+            >
+              Tamam
+            </button>
           </div>
         ) : (
           <>
@@ -1208,13 +1227,11 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
   }
 
   return (
-    <div className="vg-app-shell" style={{
-      minHeight: '100svh',
+    <div className="vg-app-shell vg-screen-fill" style={{
       background: t.bg,
       fontFamily: 'Inter, sans-serif',
       color: '#fff',
       position: 'relative',
-      paddingBottom: 'calc(40px + env(safe-area-inset-bottom, 0px))',
       transition: 'background 0.4s ease',
       overflowX: 'hidden',
     }}>
@@ -1237,8 +1254,7 @@ export default function RoomScreen({ onNavigate, theme, currentUser }) {
       <div style={{ position: 'relative', zIndex: 1 }}>
 
         {/* ── HEADER ─────────────────────────────── */}
-        <header style={{
-          padding: '20px 20px 0',
+        <header className="vg-top-bar" style={{
           position: 'sticky', top: 0, zIndex: 100,
           background: 'linear-gradient(180deg,#121212 75%,transparent)',
         }}>

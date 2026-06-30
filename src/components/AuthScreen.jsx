@@ -237,19 +237,17 @@ export default function AuthScreen({ onAuth }) {
   }
 
   return (
-    <div style={{
-      minHeight: '100svh',
+    <div className="vg-screen-fill" style={{
       width: '100%',
       background: '#18181b',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       padding: '24px 16px',
-      paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))',
-      paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))',
       position: 'relative',
       fontFamily: "'Inter', sans-serif",
-      overflow: 'hidden',
+      overflowY: 'auto',
+      overflowX: 'hidden',
       boxSizing: 'border-box',
     }}>
       <NeonDriftingAura />

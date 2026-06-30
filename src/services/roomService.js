@@ -351,7 +351,7 @@ export const roomService = {
       updatedAt: serverTimestamp(),
     };
 
-    await setDoc(roomRef, payload);
+    await withTimeout(setDoc(roomRef, payload), 10000);
 
     const localSnap = await getDoc(roomRef);
     const mapped = mapRoomDoc(localSnap, resolvedOwnerId);
@@ -359,7 +359,12 @@ export const roomService = {
       throw new Error('Oda oluşturulamadı.');
     }
 
-    verifyOnServerLater(roomRef, 'Oda');
+    try {
+      await withTimeout(confirmServerDocument(roomRef, 'Oda'), 6000);
+    } catch (err) {
+      throw mapFirestoreError(err, 'Oda sunucuya kaydedilemedi. Firebase Console > Firestore Rules kurallarini deploy edin.');
+    }
+
     return mapped;
   },
 

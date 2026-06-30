@@ -116,9 +116,6 @@ export const authService = {
       });
     };
 
-    const cached = this.getCurrentUser();
-    if (cached) callback(cached);
-
     return subscribeAuthState((firebaseUser) => {
       applyFirebaseUser(firebaseUser);
     });

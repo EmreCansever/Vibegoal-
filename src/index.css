@@ -11,8 +11,7 @@
 
 html {
   height: 100%;
-  height: -webkit-fill-available;
-  min-height: 100svh;
+  min-height: 100dvh;
   overscroll-behavior: none;
   scroll-behavior: smooth;
 }
@@ -22,16 +21,13 @@ html, body {
   font-family: 'Inter', 'Outfit', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Yatay taşmayı kökten engelle — 100vw scrollbar genişliği taşma yapabilir */
   overflow-x: hidden;
   width: 100%;
   max-width: 100%;
 }
 
 body {
-  min-height: 100%;
-  min-height: 100svh;
-  min-height: -webkit-fill-available;
+  min-height: 100dvh;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -40,14 +36,26 @@ body {
 
 #root {
   width: 100%;
-  min-height: 100%;
-  min-height: 100svh;
-  min-height: -webkit-fill-available;
-  height: 100svh;
-  height: -webkit-fill-available;
+  min-height: 100dvh;
+  height: 100dvh;
   overflow-x: hidden;
   max-width: 100%;
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Tam ekran kabuk — notch + home indicator güvenli alanı */
+.vg-screen-fill {
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  box-sizing: border-box;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -60,19 +68,17 @@ body {
   overflow-x: hidden;
   position: relative;
   flex: 1;
-  min-height: 100svh;
-  min-height: -webkit-fill-available;
-  height: 100svh;
-  height: -webkit-fill-available;
+  min-height: 0;
   box-sizing: border-box;
 }
 
-/* Üst bar — notch / status bar altında kalmaması için */
+/* Üst bar — vg-screen-fill üst safe-area sağlar; burada yalnızca iç boşluk */
 .vg-top-bar {
-  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-top: 12px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-bottom: 12px;
+  flex-shrink: 0;
 }
 
 /* Alt navigasyon — flex içinde ekranın dibine yapışık (iOS fixed kayması yok) */

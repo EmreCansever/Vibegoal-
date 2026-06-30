@@ -139,8 +139,8 @@ function saveTheme(id) {
   params: ekrana geçirilen ekstra veriler
 */
 export default function App() {
-  // Lazily fetch the current user synchronously to prevent visual flickering on refresh
-  const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser())
+  const [currentUser, setCurrentUser] = useState(null)
+  const [authReady, setAuthReady]     = useState(false)
   const [params, setParams]           = useState({})
   const [themeId, setThemeId]         = useState(loadTheme)
   // Karşılama ekranı: yalnızca uygulama ilk açıldığında bir kez gösterilir
@@ -168,12 +168,26 @@ export default function App() {
 
   useEffect(() => {
     let unsub = () => {}
+    let readyMarked = false
+    const markReady = () => {
+      if (!readyMarked) {
+        readyMarked = true
+        setAuthReady(true)
+      }
+    }
+
     authService.initSessionListener((user) => {
       setCurrentUser(user)
+      markReady()
     }).then((fn) => {
       unsub = typeof fn === 'function' ? fn : () => {}
     })
-    return () => unsub()
+
+    const fallbackTimer = setTimeout(markReady, 3000)
+    return () => {
+      clearTimeout(fallbackTimer)
+      unsub()
+    }
   }, [])
 
   useEffect(() => {
@@ -284,9 +298,8 @@ export default function App() {
   }, [])
 
   function navigate(to, extraParams = {}) {
-    const activeUser = authService.getCurrentUser()
-    // Authentication Wall: redirect to auth screen if trying to access protected views without credentials
-    if (!activeUser && to !== 'auth') {
+    if (!authReady) return
+    if (!currentUser && to !== 'auth') {
       setParams({})
       navigateHook('/auth')
       return
@@ -338,6 +351,9 @@ export default function App() {
       }} />
     )}
     <div className="vg-route" key={routeKey}>
+    {!authReady ? (
+      <RouteFallback />
+    ) : (
     <Suspense fallback={<RouteFallback />}>
     <Routes location={location}>
       <Route path="/auth" element={
@@ -382,6 +398,7 @@ export default function App() {
       <Route path="*" element={<Navigate to={currentUser ? "/dashboard" : "/auth"} replace />} />
     </Routes>
     </Suspense>
+    )}
     </div>
     </>
   )

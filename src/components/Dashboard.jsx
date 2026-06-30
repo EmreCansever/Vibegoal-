@@ -2561,19 +2561,13 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const otherMatches  = matches && matches.length > 1 ? matches.slice(1) : []
 
   return (
-    <div className="vg-app-shell" style={{
-      height: '100svh',
-      minHeight: '100svh',
-      maxHeight: '100svh',
+    <div className="vg-app-shell vg-screen-fill" style={{
       background: t.bg,
       fontFamily: 'Inter, sans-serif',
       color: '#fff',
       position: 'relative',
       transition: 'background 0.4s ease',
       overflowX: 'hidden',
-      overflowY: 'hidden',
-      display: 'flex',
-      flexDirection: 'column',
     }}>
       {/* Ambient circles — container içinde, taşma yok */}
       <div style={{
