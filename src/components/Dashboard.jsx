@@ -2161,43 +2161,31 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   useEffect(() => { duelOpenRef.current = duelOpen; }, [duelOpen]);
   useEffect(() => { predDuelOpenRef.current = predDuelOpen; }, [predDuelOpen]);
 
-  useEffect(() => {
-    if (!currentUser?.uid) return undefined;
-    return duelService.subscribeActiveSession(currentUser.uid, (active) => {
-      if (!active?.id) return;
-      if (isDuelSessionDismissed(active.id)) return;
-      if (duelOpenRef.current) return;
-      autoOpenedDuelRef.current = active.id;
-      setDuelInitialSessionId(active.id);
-      setDuelOpen(true);
-    });
-  }, [currentUser?.uid]);
+  const openDuelHub = useCallback(() => {
+    setDuelInitialSessionId(null);
+    setDuelOpen(true);
+  }, []);
 
-  useEffect(() => {
-    if (!currentUser?.uid) return undefined;
-    return duelService.subscribeSentInviteAccepted(currentUser.uid, (invite) => {
-      if (!invite?.sessionId) return;
-      if (isDuelSessionDismissed(invite.sessionId)) return;
-      if (duelOpenRef.current) return;
-      autoOpenedDuelRef.current = invite.sessionId;
-      setDuelInitialSessionId(invite.sessionId);
-      setDuelOpen(true);
-    });
-  }, [currentUser?.uid]);
+  const openPredDuelHub = useCallback(() => {
+    setPredDuelInitialId(null);
+    setPredDuelOpen(true);
+  }, []);
 
   const handleCloseDuel = useCallback(async (abandonSessionId) => {
+    const uid = currentUser?.uid;
     if (abandonSessionId) {
-      dismissDuelSession(abandonSessionId);
-      await duelService.abandonSession(abandonSessionId, currentUser?.uid).catch(() => {});
+      dismissDuelSession(abandonSessionId, uid);
+      await duelService.abandonSession(abandonSessionId, uid).catch(() => {});
     }
     setDuelInitialSessionId(null);
     setDuelOpen(false);
   }, [currentUser?.uid]);
 
   const handleClosePredDuel = useCallback(async (abandonDuelId) => {
+    const uid = currentUser?.uid;
     if (abandonDuelId) {
-      dismissPredDuel(abandonDuelId);
-      await predictionDuelService.abandonPredDuel(abandonDuelId, currentUser?.uid).catch(() => {});
+      dismissPredDuel(abandonDuelId, uid);
+      await predictionDuelService.abandonPredDuel(abandonDuelId, uid).catch(() => {});
     }
     setPredDuelInitialId(null);
     setPredDuelOpen(false);
@@ -2249,17 +2237,11 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   useEffect(() => {
     if (!currentUser?.uid) return undefined;
     return predictionDuelService.subscribeActivePredDuel(currentUser.uid, (duel) => {
-      if (duel?.id && isPredDuelDismissed(duel.id)) {
+      if (duel?.id && isPredDuelDismissed(duel.id, currentUser.uid)) {
         setActivePredDuel(null);
         return;
       }
       setActivePredDuel(duel);
-      if (!duel?.id) return;
-      if (predDuelOpenRef.current) return;
-      if (duel.status !== PRED_DUEL_STATUS.LIVE) return;
-      autoOpenedPredRef.current = duel.id;
-      setPredDuelInitialId(duel.id);
-      setPredDuelOpen(true);
     });
   }, [currentUser?.uid]);
 
@@ -3257,7 +3239,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                   theme={t}
                   activeDuel={activePredDuel}
                   currentUser={currentUser}
-                  onJoin={() => setPredDuelOpen(true)}
+                  onJoin={openPredDuelHub}
                   onOpenLive={() => {
                     if (activePredDuel?.id) {
                       setPredDuelInitialId(activePredDuel.id);
@@ -3284,7 +3266,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                   </div>
                   <button
                     type="button"
-                    onClick={() => setDuelOpen(true)}
+                    onClick={openDuelHub}
                     style={{
                       padding: '9px 14px', borderRadius: 10,
                       background: t.surface, color: t.accent,
@@ -3638,7 +3620,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
         active={activeTab === 'chat' ? 'groups' : 'home'}
         onHome={() => setActiveTab('matches')}
         onGroups={() => onNavigate('rooms')}
-        onGames={() => setDuelOpen(true)}
+        onGames={openDuelHub}
         onProfile={() => { setSidebarTab('profile'); setSidebarOpen(true) }}
       />
 

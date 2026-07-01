@@ -124,6 +124,8 @@ export default function PredictionDuelFlow({
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState('');
 
+  const uid = currentUser?.uid;
+
   useEffect(() => {
     if (!open) {
       setPhase('opponent');
@@ -137,10 +139,14 @@ export default function PredictionDuelFlow({
 
   useEffect(() => {
     if (!open || !initialDuelId) return;
+    if (isPredDuelDismissed(initialDuelId, uid)) {
+      onInitialDuelConsumed?.();
+      return;
+    }
     setDuelId(initialDuelId);
     setPhase('live');
     onInitialDuelConsumed?.();
-  }, [open, initialDuelId, onInitialDuelConsumed]);
+  }, [open, initialDuelId, onInitialDuelConsumed, uid]);
 
   useEffect(() => {
     if (!duelId) return undefined;
@@ -202,18 +208,34 @@ export default function PredictionDuelFlow({
     setToast('');
   }, [pendingInviteId]);
 
-  const handleClose = useCallback(async () => {
+  const quitActiveGame = useCallback(async () => {
     if (phase === 'waiting' && pendingInviteId) {
       await handleCancelWaiting();
-      onClose?.();
-      return;
     }
-    if (duelId && session?.status === PRED_DUEL_STATUS.LIVE && !isPredDuelDismissed(duelId)) {
+    if (duelId && !isPredDuelDismissed(duelId, uid)) {
       onClose?.(duelId);
       return;
     }
     onClose?.();
-  }, [phase, pendingInviteId, duelId, session?.status, handleCancelWaiting, onClose]);
+  }, [phase, pendingInviteId, duelId, uid, handleCancelWaiting, onClose]);
+
+  const handleClose = useCallback(async () => {
+    if (phase === 'opponent') {
+      onClose?.();
+      return;
+    }
+    if (phase === 'result' && session?.status === PRED_DUEL_STATUS.FINISHED) {
+      onClose?.();
+      return;
+    }
+    await quitActiveGame();
+  }, [phase, session?.status, quitActiveGame, onClose]);
+
+  const handleForceQuit = useCallback(async () => {
+    await quitActiveGame();
+  }, [quitActiveGame]);
+
+  const showForceQuit = phase !== 'opponent';
 
   if (!open) return null;
 
@@ -223,10 +245,20 @@ export default function PredictionDuelFlow({
       <div className="vg-duel-screen" style={{ zIndex: 441, background: t.bg, color: '#fff', fontFamily: 'Inter,sans-serif' }}>
         <div className="vg-top-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${t.border}` }}>
           <div style={{ fontSize: 17, fontWeight: 900 }}>🏁 Tahmin Düellosu</div>
-          <button type="button" onClick={handleClose} style={{
-            width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.06)',
-            border: `1px solid ${t.border}`, color: '#888', cursor: 'pointer',
-          }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {showForceQuit && (
+              <button type="button" onClick={handleForceQuit} style={{
+                padding: '6px 10px', borderRadius: 8,
+                background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)',
+                color: '#f87171', fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}>Oyunu Bitir</button>
+            )}
+            <button type="button" onClick={handleClose} style={{
+              width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.06)',
+              border: `1px solid ${t.border}`, color: '#888', cursor: 'pointer',
+            }}>✕</button>
+          </div>
         </div>
 
         {toast && (

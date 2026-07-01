@@ -5,7 +5,7 @@ import DuelDraftScreen from './DuelDraftScreen';
 import DuelResultScreen from './DuelResultScreen';
 import { duelService } from '../../services/duelService';
 import { DUEL_STATUS } from '../../constants/duelChallenges';
-import { useDuelSession, useActiveDuelSession } from '../../hooks/useDuelSession';
+import { useDuelSession } from '../../hooks/useDuelSession';
 import {
   playClickSound, playSendSound, playNotifySound, playErrorSound, playSuccessSound,
 } from '../../utils/audioEngine';
@@ -27,6 +27,7 @@ export default function DuelFlow({
   onInitialSessionConsumed,
 }) {
   const t = theme;
+  const uid = currentUser?.uid;
   const [phase, setPhase] = useState('hub');
   const [challengeId, setChallengeId] = useState(null);
   const [sessionId, setSessionId] = useState(null);
@@ -41,18 +42,7 @@ export default function DuelFlow({
     picking,
     error: pickError,
     pickPlayer,
-  } = useDuelSession(sessionId, currentUser?.uid);
-
-  const handleResumeSession = useCallback((active) => {
-    if (!active?.id || isDuelSessionDismissed(active.id)) return;
-    setSessionId((prev) => (prev === active.id ? prev : active.id));
-    if (active.status === DUEL_STATUS.DRAFT) setPhase('draft');
-    else if (active.status === DUEL_STATUS.REVEAL || active.status === DUEL_STATUS.FINISHED) {
-      setPhase('result');
-    }
-  }, []);
-
-  useActiveDuelSession(currentUser?.uid, handleResumeSession);
+  } = useDuelSession(sessionId, uid);
 
   useEffect(() => {
     if (!open) {
@@ -66,15 +56,19 @@ export default function DuelFlow({
 
   useEffect(() => {
     if (!open || !initialSessionId) return;
+    if (isDuelSessionDismissed(initialSessionId, uid)) {
+      onInitialSessionConsumed?.();
+      return;
+    }
     setSessionId(initialSessionId);
     setPhase('draft');
     setPendingInviteId(null);
     onInitialSessionConsumed?.();
-  }, [open, initialSessionId, onInitialSessionConsumed]);
+  }, [open, initialSessionId, onInitialSessionConsumed, uid]);
 
   useEffect(() => {
     if (!pendingInviteId || phase !== 'waiting') return undefined;
-    return duelService.subscribeInvite(pendingInviteId, currentUser?.uid, (invite) => {
+    return duelService.subscribeInvite(pendingInviteId, uid, (invite) => {
       if (!invite) return;
       if (invite.status === 'accepted' && invite.sessionId) {
         playNotifySound();
@@ -89,7 +83,7 @@ export default function DuelFlow({
         setPhase('opponent');
       }
     });
-  }, [pendingInviteId, phase, currentUser?.uid]);
+  }, [pendingInviteId, phase, uid]);
 
   useEffect(() => {
     if (!session) return;
@@ -97,7 +91,7 @@ export default function DuelFlow({
     if (session.status === DUEL_STATUS.REVEAL || session.status === DUEL_STATUS.FINISHED) {
       setPhase('result');
       if (
-        session.winnerUid === currentUser.uid
+        session.winnerUid === uid
         && session.status === DUEL_STATUS.REVEAL
         && !winHandledRef.current
       ) {
@@ -105,7 +99,12 @@ export default function DuelFlow({
         onWin?.();
       }
     }
-  }, [session, currentUser?.uid, onWin]);
+    if (session.status === DUEL_STATUS.CANCELLED) {
+      setToast('Düello iptal edildi.');
+      setSessionId(null);
+      setPhase('hub');
+    }
+  }, [session, uid, onWin]);
 
   useEffect(() => {
     if (pickError) setToast(pickError);
@@ -162,18 +161,35 @@ export default function DuelFlow({
     setToast('');
   }, [pendingInviteId]);
 
-  const handleClose = useCallback(async () => {
+  const quitActiveGame = useCallback(async () => {
     if (phase === 'waiting' && pendingInviteId) {
       await handleCancelWaiting();
-      onClose?.();
-      return;
     }
-    if (sessionId && session?.status === DUEL_STATUS.DRAFT && !isDuelSessionDismissed(sessionId)) {
+    if (sessionId && !isDuelSessionDismissed(sessionId, uid)) {
       onClose?.(sessionId);
       return;
     }
+    await duelService.abandonAllActiveForUser(uid).catch(() => {});
     onClose?.();
-  }, [phase, pendingInviteId, sessionId, session?.status, handleCancelWaiting, onClose]);
+  }, [phase, pendingInviteId, sessionId, uid, handleCancelWaiting, onClose]);
+
+  const handleClose = useCallback(async () => {
+    if (phase === 'hub') {
+      onClose?.();
+      return;
+    }
+    if (phase === 'result' && session?.status === DUEL_STATUS.FINISHED) {
+      onClose?.();
+      return;
+    }
+    await quitActiveGame();
+  }, [phase, session?.status, quitActiveGame, onClose]);
+
+  const handleForceQuit = useCallback(async () => {
+    await quitActiveGame();
+  }, [quitActiveGame]);
+
+  const showForceQuit = phase !== 'hub';
 
   if (!open) return null;
 
@@ -204,17 +220,33 @@ export default function DuelFlow({
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            style={{
-              width: 34, height: 34, borderRadius: 10,
-              background: 'rgba(255,255,255,0.06)', border: `1px solid ${t.border}`,
-              color: '#888', fontSize: 16, cursor: 'pointer',
-            }}
-          >
-            ✕
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {showForceQuit && (
+              <button
+                type="button"
+                onClick={handleForceQuit}
+                style={{
+                  padding: '6px 10px', borderRadius: 8,
+                  background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)',
+                  color: '#f87171', fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Oyunu Bitir
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleClose}
+              style={{
+                width: 34, height: 34, borderRadius: 10,
+                background: 'rgba(255,255,255,0.06)', border: `1px solid ${t.border}`,
+                color: '#888', fontSize: 16, cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {toast && (

@@ -16,6 +16,7 @@ import {
   setDoc,
   updateDoc,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   where,
@@ -280,6 +281,32 @@ export const duelService = {
       updatedAt: serverTimestamp(),
     });
     return true;
+  },
+
+  /** Kullanıcının tüm yarım kalmış draft/reveal oturumlarını iptal et */
+  async abandonAllActiveForUser(fallbackUid = null) {
+    if (!this.isAvailable()) return 0;
+    const targets = uidCandidates(fallbackUid || resolveAuthUid());
+    if (targets.length === 0) return 0;
+
+    const seen = new Set();
+    let count = 0;
+    await Promise.all(targets.map(async (target) => {
+      const q = query(
+        collection(db, 'duel_sessions'),
+        where('participantIds', 'array-contains', target),
+        where('status', 'in', [DUEL_STATUS.DRAFT, DUEL_STATUS.REVEAL]),
+      );
+      const snap = await getDocs(q).catch(() => null);
+      if (!snap) return;
+      await Promise.all(snap.docs.map(async (d) => {
+        if (seen.has(d.id)) return;
+        seen.add(d.id);
+        const ok = await this.abandonSession(d.id, fallbackUid).catch(() => false);
+        if (ok) count += 1;
+      }));
+    }));
+    return count;
   },
 
   /** Tur seçimi — Firestore transaction ile atomik senkron */

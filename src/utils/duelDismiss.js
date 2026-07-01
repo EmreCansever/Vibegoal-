@@ -1,10 +1,16 @@
 const DUEL_KEY = 'vg_dismissed_duels';
 const PRED_KEY = 'vg_dismissed_pred_duels';
-const MAX = 50;
+const SEEN_DUEL_INVITE_KEY = 'vg_seen_duel_invites';
+const SEEN_PRED_INVITE_KEY = 'vg_seen_pred_invites';
+const MAX = 80;
+
+function userKey(base, uid) {
+  return uid ? `${base}_${uid}` : base;
+}
 
 function readSet(key) {
   try {
-    const raw = sessionStorage.getItem(key);
+    const raw = localStorage.getItem(key);
     return new Set(raw ? JSON.parse(raw) : []);
   } catch {
     return new Set();
@@ -13,28 +19,50 @@ function readSet(key) {
 
 function writeSet(key, set) {
   try {
-    sessionStorage.setItem(key, JSON.stringify([...set].slice(-MAX)));
+    localStorage.setItem(key, JSON.stringify([...set].slice(-MAX)));
   } catch { /* ignore */ }
 }
 
-export function dismissDuelSession(id) {
+export function dismissDuelSession(id, uid) {
   if (!id) return;
-  const s = readSet(DUEL_KEY);
+  const s = readSet(userKey(DUEL_KEY, uid));
   s.add(id);
-  writeSet(DUEL_KEY, s);
+  writeSet(userKey(DUEL_KEY, uid), s);
 }
 
-export function isDuelSessionDismissed(id) {
-  return id ? readSet(DUEL_KEY).has(id) : false;
+export function isDuelSessionDismissed(id, uid) {
+  return id ? readSet(userKey(DUEL_KEY, uid)).has(id) : false;
 }
 
-export function dismissPredDuel(id) {
+export function dismissPredDuel(id, uid) {
   if (!id) return;
-  const s = readSet(PRED_KEY);
+  const s = readSet(userKey(PRED_KEY, uid));
   s.add(id);
-  writeSet(PRED_KEY, s);
+  writeSet(userKey(PRED_KEY, uid), s);
 }
 
-export function isPredDuelDismissed(id) {
-  return id ? readSet(PRED_KEY).has(id) : false;
+export function isPredDuelDismissed(id, uid) {
+  return id ? readSet(userKey(PRED_KEY, uid)).has(id) : false;
+}
+
+export function markDuelInviteHandled(inviteId, uid) {
+  if (!inviteId) return;
+  const s = readSet(userKey(SEEN_DUEL_INVITE_KEY, uid));
+  s.add(inviteId);
+  writeSet(userKey(SEEN_DUEL_INVITE_KEY, uid), s);
+}
+
+export function isDuelInviteHandled(inviteId, uid) {
+  return inviteId ? readSet(userKey(SEEN_DUEL_INVITE_KEY, uid)).has(inviteId) : false;
+}
+
+export function markPredInviteHandled(inviteId, uid) {
+  if (!inviteId) return;
+  const s = readSet(userKey(SEEN_PRED_INVITE_KEY, uid));
+  s.add(inviteId);
+  writeSet(userKey(SEEN_PRED_INVITE_KEY, uid), s);
+}
+
+export function isPredInviteHandled(inviteId, uid) {
+  return inviteId ? readSet(userKey(SEEN_PRED_INVITE_KEY, uid)).has(inviteId) : false;
 }

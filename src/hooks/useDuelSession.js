@@ -65,7 +65,7 @@ export function useActiveDuelSession(uid, onFound) {
   useEffect(() => {
     if (!uid) return undefined;
     return duelService.subscribeActiveSession(uid, (session) => {
-      if (session?.id && isDuelSessionDismissed(session.id)) return;
+      if (session?.id && isDuelSessionDismissed(session.id, uid)) return;
       if (session?.id) onFound?.(session);
     });
   }, [uid, onFound]);
