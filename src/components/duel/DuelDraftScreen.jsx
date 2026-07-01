@@ -107,7 +107,7 @@ export default function DuelDraftScreen({
           }}
         >
           <div style={{ fontSize: 12, fontWeight: 700, color: '#888', marginBottom: 10, textAlign: 'center' }}>
-            {round.slotLabel} — Bir oyuncu seç
+            {round.slotLabel} ({round.slotPosGroup || '?'}) — Boş mevki için seç
           </div>
 
           {alreadyPicked ? (

@@ -11,8 +11,6 @@
 
 html {
   height: 100%;
-  min-height: 100dvh;
-  min-height: -webkit-fill-available;
   overscroll-behavior: none;
   scroll-behavior: smooth;
 }
@@ -28,31 +26,32 @@ html, body {
 }
 
 body {
-  min-height: 100dvh;
-  min-height: -webkit-fill-available;
+  position: fixed;
+  inset: 0;
+  width: 100%;
   height: 100%;
+  overflow: hidden;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   touch-action: manipulation;
-  overflow: hidden;
 }
 
 #root {
+  position: fixed;
+  inset: 0;
   width: 100%;
-  height: 100%;
-  min-height: 100dvh;
-  min-height: -webkit-fill-available;
   overflow: hidden;
   max-width: 100%;
-  position: relative;
   display: flex;
   flex-direction: column;
+  background: #18181b;
 }
 
 :root {
-  --vg-bottom-nav-h: 56px;
+  --vg-bottom-nav-h: 52px;
   --vg-bottom-nav-total: calc(var(--vg-bottom-nav-h) + env(safe-area-inset-bottom, 0px));
+  --vg-app-bg: #18181b;
 }
 
 /* Dashboard / rota — #root içinde tam yükseklik */
@@ -89,12 +88,12 @@ body {
   padding-top: env(safe-area-inset-top, 0px);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
-  padding-bottom: var(--vg-bottom-nav-total);
   box-sizing: border-box;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
+  background: var(--vg-app-bg);
 }
 
 .vg-dashboard-main {
@@ -105,6 +104,14 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding-bottom: var(--vg-bottom-nav-total);
+}
+
+.vg-tab-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Düello tam ekran — alt safe-area dahil */
@@ -164,7 +171,7 @@ body {
   flex-shrink: 0;
 }
 
-/* Alt navigasyon — viewport altına sabitlenir (iOS PWA boşluk fix) */
+/* Alt navigasyon — viewport altına sabitlenir (iOS PWA) */
 .vg-bottom-nav {
   position: fixed;
   bottom: 0;
@@ -176,11 +183,24 @@ body {
   margin-left: auto;
   margin-right: auto;
   box-sizing: border-box;
-  padding-top: 8px;
+  padding-top: 6px;
   padding-left: max(6px, env(safe-area-inset-left, 0px));
   padding-right: max(6px, env(safe-area-inset-right, 0px));
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
   min-height: var(--vg-bottom-nav-h);
+  background: var(--vg-app-bg);
+}
+
+/* iOS home indicator altındaki siyah boşluğu doldur */
+.vg-bottom-nav::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
+  height: env(safe-area-inset-bottom, 0px);
+  background: inherit;
+  pointer-events: none;
 }
 
 /* Uzun kelimeler / URL taşmasını engelle */

@@ -1,23 +1,25 @@
 /**
  * Önbelleklenmiş oyuncu havuzu — dış API çağrısı yok.
- * photoId → media.api-sports.io CDN (cache'lenmiş görsel)
+ * photoId → media.api-sports.io CDN (doğrulanmış ID'ler)
  */
+export const PLAYERS_SEED_VERSION = 3;
+
 export const PLAYERS_SEED = [
   { id: 'pl_001', name: 'Alisson', team: 'Liverpool', position: 'GK', age: 31, heightCm: 193, marketValueM: 28, photoId: 283 },
   { id: 'pl_002', name: 'Courtois', team: 'Real Madrid', position: 'GK', age: 32, heightCm: 199, marketValueM: 25, photoId: 730 },
   { id: 'pl_003', name: 'Donnarumma', team: 'PSG', position: 'GK', age: 25, heightCm: 196, marketValueM: 45, photoId: 851 },
-  { id: 'pl_004', name: 'Lammens', team: 'Man Utd', position: 'GK', age: 22, heightCm: 189, marketValueM: 18, photoId: 330 },
+  { id: 'pl_004', name: 'Ederson', team: 'Man City', position: 'GK', age: 31, heightCm: 188, marketValueM: 30, photoId: 8827 },
   { id: 'pl_005', name: 'Ter Stegen', team: 'Barcelona', position: 'GK', age: 32, heightCm: 187, marketValueM: 22, photoId: 728 },
   { id: 'pl_006', name: 'Van Dijk', team: 'Liverpool', position: 'DEF', age: 33, heightCm: 195, marketValueM: 35, photoId: 2935 },
   { id: 'pl_007', name: 'Rüdiger', team: 'Real Madrid', position: 'DEF', age: 31, heightCm: 190, marketValueM: 20, photoId: 954 },
   { id: 'pl_008', name: 'Saliba', team: 'Arsenal', position: 'DEF', age: 23, heightCm: 192, marketValueM: 75, photoId: 25916 },
   { id: 'pl_009', name: 'Araujo', team: 'Barcelona', position: 'DEF', age: 25, heightCm: 188, marketValueM: 55, photoId: 101814 },
-  { id: 'pl_010', name: 'Hakimi', team: 'PSG', position: 'DEF', age: 26, heightCm: 181, marketValueM: 60, photoId: 8 },
-  { id: 'pl_011', name: 'Theo Hernandez', team: 'AC Milan', position: 'DEF', age: 27, heightCm: 184, marketValueM: 50, photoId: 26 },
+  { id: 'pl_010', name: 'Hakimi', team: 'PSG', position: 'DEF', age: 26, heightCm: 181, marketValueM: 60, photoId: 2725 },
+  { id: 'pl_011', name: 'Theo Hernandez', team: 'AC Milan', position: 'DEF', age: 27, heightCm: 184, marketValueM: 50, photoId: 83 },
   { id: 'pl_012', name: 'Gvardiol', team: 'Man City', position: 'DEF', age: 22, heightCm: 185, marketValueM: 70, photoId: 129671 },
   { id: 'pl_013', name: 'Yoro', team: 'Man Utd', position: 'DEF', age: 19, heightCm: 190, marketValueM: 55, photoId: 288027 },
-  { id: 'pl_014', name: 'Carlos Forbs', team: 'Ajax', position: 'DEF', age: 20, heightCm: 178, marketValueM: 12, photoId: 340573 },
-  { id: 'pl_015', name: 'Pepe', team: 'Porto', position: 'DEF', age: 27, heightCm: 188, marketValueM: 25, photoId: 1006 },
+  { id: 'pl_014', name: 'Marquinhos', team: 'PSG', position: 'DEF', age: 30, heightCm: 183, marketValueM: 45, photoId: 2577 },
+  { id: 'pl_015', name: 'Pepe', team: 'Porto', position: 'DEF', age: 27, heightCm: 188, marketValueM: 25, photoId: 37145 },
   { id: 'pl_016', name: 'De Jong', team: 'Barcelona', position: 'MID', age: 27, heightCm: 180, marketValueM: 70, photoId: 149 },
   { id: 'pl_017', name: 'Bellingham', team: 'Real Madrid', position: 'MID', age: 21, heightCm: 186, marketValueM: 180, photoId: 129718 },
   { id: 'pl_018', name: 'Pedri', team: 'Barcelona', position: 'MID', age: 22, heightCm: 174, marketValueM: 100, photoId: 923 },
@@ -25,7 +27,7 @@ export const PLAYERS_SEED = [
   { id: 'pl_020', name: 'Vitinha', team: 'PSG', position: 'MID', age: 24, heightCm: 172, marketValueM: 80, photoId: 2472 },
   { id: 'pl_021', name: 'Güler', team: 'Real Madrid', position: 'MID', age: 19, heightCm: 175, marketValueM: 45, photoId: 336594 },
   { id: 'pl_022', name: 'Modric', team: 'Real Madrid', position: 'MID', age: 39, heightCm: 172, marketValueM: 8, photoId: 754 },
-  { id: 'pl_023', name: 'Kroos', team: 'Retired', position: 'MID', age: 34, heightCm: 183, marketValueM: 5, photoId: 754 },
+  { id: 'pl_023', name: 'Kroos', team: 'Retired', position: 'MID', age: 34, heightCm: 183, marketValueM: 5, photoId: 755 },
   { id: 'pl_024', name: 'Casemiro', team: 'Man Utd', position: 'MID', age: 32, heightCm: 185, marketValueM: 15, photoId: 747 },
   { id: 'pl_025', name: 'Olise', team: 'Bayern', position: 'MID', age: 23, heightCm: 178, marketValueM: 65, photoId: 196759 },
   { id: 'pl_026', name: 'Haaland', team: 'Man City', position: 'FWD', age: 24, heightCm: 194, marketValueM: 180, photoId: 1100 },

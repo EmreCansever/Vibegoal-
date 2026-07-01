@@ -3,13 +3,10 @@ import {
   doc,
   getDoc,
   getDocs,
-  setDoc,
   writeBatch,
-  query,
-  limit,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
-import { PLAYERS_SEED } from '../data/playersSeed';
+import { PLAYERS_SEED, PLAYERS_SEED_VERSION } from '../data/playersSeed';
 import { FORMATION_SLOTS } from '../constants/duelChallenges';
 import { shuffleWithSeed } from '../utils/duelEngine';
 import { normalizePlayerRecord, toDraftCardSnapshot } from '../utils/playerPhotos';
@@ -37,16 +34,26 @@ export const playerService = {
       PLAYERS_SEED.forEach((raw) => {
         const normalized = normalizeFromSeed(raw);
         const prev = existingById[raw.id];
+
         if (!prev) {
-          batch.set(doc(db, 'players', raw.id), normalized);
+          batch.set(doc(db, 'players', raw.id), {
+            ...normalized,
+            seedVersion: PLAYERS_SEED_VERSION,
+          });
           hasWrites = true;
           return;
         }
-        if (!prev.photoUrl || prev.photoUrl !== normalized.photoUrl) {
+
+        const needsUpdate = (prev.seedVersion ?? 0) < PLAYERS_SEED_VERSION
+          || prev.photoUrl !== normalized.photoUrl
+          || prev.photoId !== raw.photoId
+          || prev.position !== raw.position
+          || prev.name !== raw.name;
+
+        if (needsUpdate) {
           batch.update(doc(db, 'players', raw.id), {
-            photoUrl: normalized.photoUrl,
-            photoId: raw.photoId ?? prev.photoId ?? null,
-            updatedAt: Date.now(),
+            ...normalized,
+            seedVersion: PLAYERS_SEED_VERSION,
           });
           hasWrites = true;
         }
@@ -93,6 +100,7 @@ export const playerService = {
     return Object.fromEntries(entries.filter(Boolean));
   },
 
+  /** Her tur = sahadaki bir boş mevki; yalnızca o mevki grubundan oyuncu */
   async buildDraftScript(duelId, playerAUid, playerBUid) {
     const pool = await this.getAllPlayers();
     const byGroup = { GK: [], DEF: [], MID: [], FWD: [] };
@@ -102,35 +110,23 @@ export const playerService = {
 
     const used = new Set();
     const rounds = [];
-    const shuffledSlots = shuffleWithSeed([...FORMATION_SLOTS], `${duelId}-slots`);
+    const slotOrder = shuffleWithSeed([...FORMATION_SLOTS], `${duelId}-slots`);
 
-    const pickPair = (candidates, seed) => {
-      const list = shuffleWithSeed(candidates, seed);
-      return [list[0], list[1]].filter(Boolean);
-    };
-
-    shuffledSlots.forEach((slot, index) => {
+    slotOrder.forEach((slot, index) => {
       const posCandidates = byGroup[slot.posGroup].filter((p) => !used.has(p.id));
-      const anyCandidates = pool.filter((p) => !used.has(p.id));
+      if (posCandidates.length < 4) return;
 
-      const poolA = posCandidates.length >= 2 ? posCandidates : anyCandidates;
-      const [a1, a2] = pickPair(poolA, `${duelId}-a-${slot.id}-${index}`);
-      if (!a1 || !a2) return;
-      used.add(a1.id);
-      used.add(a2.id);
+      const shuffled = shuffleWithSeed(posCandidates, `${duelId}-${slot.id}-${index}`);
+      const [a1, a2, b1, b2] = shuffled.slice(0, 4);
+      if (!a1 || !a2 || !b1 || !b2) return;
 
-      const posCandidatesB = byGroup[slot.posGroup].filter((p) => !used.has(p.id));
-      const anyCandidatesB = pool.filter((p) => !used.has(p.id));
-      const poolB = posCandidatesB.length >= 2 ? posCandidatesB : anyCandidatesB;
-      const [b1, b2] = pickPair(poolB, `${duelId}-b-${slot.id}-${index}`);
-      if (!b1 || !b2) return;
-      used.add(b1.id);
-      used.add(b2.id);
+      [a1, a2, b1, b2].forEach((p) => used.add(p.id));
 
       rounds.push({
-        round: index,
+        round: rounds.length,
         slotId: slot.id,
         slotLabel: slot.label,
+        slotPosGroup: slot.posGroup,
         optionsByPlayer: {
           [playerAUid]: [toDraftCardSnapshot(a1), toDraftCardSnapshot(a2)],
           [playerBUid]: [toDraftCardSnapshot(b1), toDraftCardSnapshot(b2)],

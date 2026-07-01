@@ -224,6 +224,12 @@ export const duelService = {
       const validIds = myOptions.map((o) => o.id);
       if (!validIds.includes(playerId)) throw new Error('Geçersiz oyuncu seçimi.');
 
+      const pickedOption = myOptions.find((o) => o.id === playerId);
+      const slotGroup = roundData.slotPosGroup;
+      if (slotGroup && pickedOption?.position && pickedOption.position !== slotGroup) {
+        throw new Error('Bu oyuncu bu mevki için uygun değil.');
+      }
+
       const roundPicks = data.roundPicks?.[round] || {};
       if (roundPicks[uid]) throw new Error('Bu turda zaten seçim yaptınız.');
 

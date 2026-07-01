@@ -3066,7 +3066,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
         {/* ── TAB: HOME (MATCHES) ──────────────── */}
         {activeTab === 'matches' && (
-          <div key="tab-matches" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }} className="scroll-hide vg-fade">
+          <div key="tab-matches" className="scroll-hide vg-fade vg-tab-scroll" style={{ paddingBottom: 16 }}>
 
             {/* ── Öne çıkan canlı maç ─────────────── */}
             {matchesLoading ? (
