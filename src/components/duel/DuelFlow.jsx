@@ -261,6 +261,22 @@ export default function DuelFlow({
           </div>
         )}
 
+        {phase === 'draft' && !session && sessionId && (
+          <div style={{
+            flex: 1, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center',
+          }}>
+            <div style={{
+              width: 48, height: 48, borderRadius: '50%',
+              border: `3px solid ${t.accentBorder}`,
+              borderTopColor: t.accent,
+              animation: 'vg-spin 0.9s linear infinite',
+              marginBottom: 16,
+            }} />
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Draft odası açılıyor…</div>
+          </div>
+        )}
+
         {phase === 'draft' && session && (
           <DuelDraftScreen
             session={session}

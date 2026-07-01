@@ -147,7 +147,7 @@ export default function DuelResultScreen({ session, theme, currentUser, onClose,
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: '#888', marginBottom: 8 }}>SENİN İLK 11</div>
         <DuelFormationPitch
-          picks={session.picks?.[uid] || {}}
+          picks={session.myPicks || session.picks?.[session.resolvedUid] || {}}
           playerMap={playerMap}
           theme={t}
           challenge={result.challenge}

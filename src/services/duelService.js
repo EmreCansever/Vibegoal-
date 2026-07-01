@@ -27,6 +27,7 @@ import {
   db,
   isFirebaseConfigured,
   resolveAuthUid,
+  getFirebaseAuthUid,
   waitForAuthReady,
 } from './firebase';
 import { playerService } from './playerService';
@@ -65,21 +66,53 @@ function tsToMs(val) {
   return null;
 }
 
-function mapInvite(d, uid) {
+function uidCandidates(fallbackUid) {
+  const authUid = getFirebaseAuthUid();
+  return [...new Set([authUid, fallbackUid].filter(Boolean))];
+}
+
+/** Oturumdaki gerçek katılımcı uid — Firebase / yerel uid uyumsuzluğunu çözer */
+export function resolveParticipantUid(sessionData, fallbackUid) {
+  if (!sessionData) return fallbackUid || getFirebaseAuthUid() || null;
+  const candidates = uidCandidates(fallbackUid);
+  for (const id of candidates) {
+    if (id === sessionData.playerAUid || id === sessionData.playerBUid) return id;
+    if (sessionData.participantIds?.includes(id)) return id;
+    if (sessionData.picks?.[id]) return id;
+  }
+  const round0 = sessionData.draftRounds?.[0];
+  if (round0?.optionsByPlayer) {
+    for (const id of candidates) {
+      if (round0.optionsByPlayer[id]) return id;
+    }
+  }
+  return candidates[0] || fallbackUid || null;
+}
+
+function canReceiveInvite(invite, fallbackUid) {
+  if (!invite) return false;
+  return uidCandidates(fallbackUid).includes(invite.toUid);
+}
+
+function mapInvite(d, fallbackUid) {
   if (!d?.exists()) return null;
   const data = d.data();
+  const candidates = uidCandidates(fallbackUid);
   return {
     id: d.id,
     ...data,
-    isIncoming: data.toUid === uid,
-    isOutgoing: data.fromUid === uid,
+    isIncoming: candidates.includes(data.toUid),
+    isOutgoing: candidates.includes(data.fromUid),
   };
 }
 
 /** Session room state — her snapshot'ta tüm client'lara aynı görünür */
-function mapSession(d, uid) {
+function mapSession(d, fallbackUid) {
   if (!d?.exists()) return null;
   const data = d.data();
+  const uid = resolveParticipantUid(data, fallbackUid);
+  if (!uid) return null;
+
   const rounds = data.draftRounds || [];
   const currentRound = Number(data.currentRound) || 0;
   const myPicks = data.picks?.[uid] || {};
@@ -97,6 +130,7 @@ function mapSession(d, uid) {
   return {
     id: d.id,
     ...data,
+    resolvedUid: uid,
     currentRound,
     totalRounds: rounds.length,
     activeRound,
@@ -147,15 +181,18 @@ export const duelService = {
   /** Davet kabul → Session Room oluştur */
   async acceptInvite(inviteId, acceptorProfile = {}) {
     if (!this.isAvailable()) throw new Error('Firebase yapılandırılmamış.');
-    await waitForAuthReady(2000);
-    const uid = resolveAuthUid();
-    if (!uid) throw new Error('Oturum gerekli.');
+    await waitForAuthReady(2500);
+    const fallbackUid = acceptorProfile.uid || null;
+    const authUid = resolveAuthUid(fallbackUid);
+    if (!authUid && !fallbackUid) throw new Error('Oturum gerekli.');
 
     const inviteRef = doc(db, 'duel_invites', inviteId);
     const inviteSnap = await getDoc(inviteRef);
     if (!inviteSnap.exists()) throw new Error('Davet bulunamadı.');
     const invite = inviteSnap.data();
-    if (invite.toUid !== uid) throw new Error('Bu davet size ait değil.');
+    if (!canReceiveInvite(invite, fallbackUid)) {
+      throw new Error('Bu davet size ait değil.');
+    }
     if (invite.status !== 'pending') throw new Error('Davet artık geçerli değil.');
 
     await playerService.ensureSeeded();
@@ -219,10 +256,8 @@ export const duelService = {
   },
 
   /** Tur seçimi — Firestore transaction ile atomik senkron */
-  async pickPlayer(sessionId, playerId) {
+  async pickPlayer(sessionId, playerId, fallbackUid = null) {
     if (!this.isAvailable()) throw new Error('Firebase yapılandırılmamış.');
-    const uid = resolveAuthUid();
-    if (!uid) throw new Error('Oturum gerekli.');
 
     const ref = doc(db, 'duel_sessions', sessionId);
     let shouldFinalize = false;
@@ -232,10 +267,15 @@ export const duelService = {
       if (!snap.exists()) throw new Error('Düello oturumu bulunamadı.');
       const data = snap.data();
 
-      if (data.status !== DUEL_STATUS.DRAFT) throw new Error('Draft aktif değil.');
-      if (!data.participantIds?.includes(uid)) {
+      const uid = resolveParticipantUid(data, fallbackUid || resolveAuthUid());
+      if (!uid) throw new Error('Oturum gerekli.');
+      if (!data.participantIds?.includes(uid)
+        && uid !== data.playerAUid
+        && uid !== data.playerBUid) {
         throw new Error('Bu oturumun oyuncusu değilsiniz.');
       }
+
+      if (data.status !== DUEL_STATUS.DRAFT) throw new Error('Draft aktif değil.');
 
       const round = Number(data.currentRound) || 0;
       const roundData = data.draftRounds?.[round];
@@ -363,29 +403,44 @@ export const duelService = {
     );
   },
 
-  /** Gelen davetler — onSnapshot */
-  subscribeIncomingInvites(uid, callback) {
-    if (!this.isAvailable() || !uid) {
+  /** Gelen davetler — Firebase + yerel uid ile çift dinleme */
+  subscribeIncomingInvites(fallbackUid, callback) {
+    if (!this.isAvailable()) {
       callback([]);
       return () => {};
     }
 
-    const q = query(
-      collection(db, 'duel_invites'),
-      where('toUid', '==', uid),
-      where('status', '==', 'pending'),
-    );
-
-    return onSnapshot(q, (snap) => {
-      callback(snap.docs.map((d) => mapInvite(d, uid)));
-    }, (err) => {
-      console.error('[DuelRoom] invite listener:', err);
+    const targets = uidCandidates(fallbackUid);
+    if (targets.length === 0) {
       callback([]);
+      return () => {};
+    }
+
+    const byId = new Map();
+    const emit = () => callback([...byId.values()]);
+
+    const unsubs = targets.map((target) => {
+      const q = query(
+        collection(db, 'duel_invites'),
+        where('toUid', '==', target),
+        where('status', '==', 'pending'),
+      );
+      return onSnapshot(q, (snap) => {
+        [...byId.entries()].forEach(([id, inv]) => {
+          if (inv.toUid === target) byId.delete(id);
+        });
+        snap.docs.forEach((d) => byId.set(d.id, mapInvite(d, fallbackUid)));
+        emit();
+      }, (err) => {
+        console.error('[DuelRoom] invite listener:', err);
+      });
     });
+
+    return () => unsubs.forEach((u) => u());
   },
 
   /** Session Room — draft state anlık senkron */
-  subscribeSession(sessionId, uid, callback) {
+  subscribeSession(sessionId, fallbackUid, callback) {
     if (!this.isAvailable() || !sessionId) {
       callback(null);
       return () => {};
@@ -394,7 +449,7 @@ export const duelService = {
     const ref = doc(db, 'duel_sessions', sessionId);
     return onSnapshot(
       ref,
-      (snap) => callback(mapSession(snap, uid)),
+      (snap) => callback(mapSession(snap, fallbackUid)),
       (err) => {
         console.error('[DuelRoom] session listener:', err);
         callback(null);
@@ -403,33 +458,82 @@ export const duelService = {
   },
 
   /** Kullanıcının aktif oturumu — sayfa yenilemede odaya dön */
-  subscribeActiveSession(uid, callback) {
-    if (!this.isAvailable() || !uid) {
+  subscribeActiveSession(fallbackUid, callback) {
+    if (!this.isAvailable()) {
       callback(null);
       return () => {};
     }
 
-    const q = query(
-      collection(db, 'duel_sessions'),
-      where('participantIds', 'array-contains', uid),
-      where('status', 'in', [DUEL_STATUS.DRAFT, DUEL_STATUS.REVEAL]),
-    );
-
-    return onSnapshot(q, (snap) => {
-      if (snap.empty) {
-        callback(null);
-        return;
-      }
-      const docSnap = snap.docs.sort((a, b) => {
-        const ta = tsToMs(a.data().updatedAt) || 0;
-        const tb = tsToMs(b.data().updatedAt) || 0;
-        return tb - ta;
-      })[0];
-      callback(mapSession(docSnap, uid));
-    }, (err) => {
-      console.error('[DuelRoom] active session listener:', err);
+    const targets = uidCandidates(fallbackUid);
+    if (targets.length === 0) {
       callback(null);
+      return () => {};
+    }
+
+    const sessionsByTarget = new Map();
+    const refreshLatest = () => {
+      let best = null;
+      sessionsByTarget.forEach((s) => {
+        if (!s) return;
+        if (!best || (s.serverUpdatedAt || 0) > (best.serverUpdatedAt || 0)) best = s;
+      });
+      callback(best);
+    };
+
+    const unsubs = targets.map((target) => {
+      const q = query(
+        collection(db, 'duel_sessions'),
+        where('participantIds', 'array-contains', target),
+        where('status', 'in', [DUEL_STATUS.DRAFT, DUEL_STATUS.REVEAL]),
+      );
+      return onSnapshot(q, (snap) => {
+        if (snap.empty) {
+          sessionsByTarget.set(target, null);
+        } else {
+          const docSnap = snap.docs.sort((a, b) => {
+            const ta = tsToMs(a.data().updatedAt) || 0;
+            const tb = tsToMs(b.data().updatedAt) || 0;
+            return tb - ta;
+          })[0];
+          sessionsByTarget.set(target, mapSession(docSnap, fallbackUid));
+        }
+        refreshLatest();
+      }, (err) => {
+        console.error('[DuelRoom] active session listener:', err);
+      });
     });
+
+    return () => unsubs.forEach((u) => u());
+  },
+
+  /** Gönderilen davet kabul edildiğinde — modal kapalı olsa bile oyunu aç */
+  subscribeSentInviteAccepted(fallbackUid, callback) {
+    if (!this.isAvailable()) {
+      callback(null);
+      return () => {};
+    }
+
+    const targets = uidCandidates(fallbackUid);
+    if (targets.length === 0) return () => {};
+
+    const unsubs = targets.map((target) => {
+      const q = query(
+        collection(db, 'duel_invites'),
+        where('fromUid', '==', target),
+        where('status', '==', 'accepted'),
+      );
+      return onSnapshot(q, (snap) => {
+        const accepted = snap.docs
+          .map((d) => mapInvite(d, fallbackUid))
+          .filter((inv) => inv?.sessionId)
+          .sort((a, b) => (tsToMs(b.updatedAt) || 0) - (tsToMs(a.updatedAt) || 0));
+        callback(accepted[0] || null);
+      }, (err) => {
+        console.error('[DuelRoom] sent invite listener:', err);
+      });
+    });
+
+    return () => unsubs.forEach((u) => u());
   },
 };
 

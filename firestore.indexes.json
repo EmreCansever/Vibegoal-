@@ -17,6 +17,14 @@
       ]
     },
     {
+      "collectionGroup": "duel_invites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fromUid", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "pred_duel_invites",
       "queryScope": "COLLECTION",
       "fields": [

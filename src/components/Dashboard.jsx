@@ -2116,6 +2116,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [duelInitialSessionId, setDuelInitialSessionId] = useState(null)
   const [incomingDuelInvites, setIncomingDuelInvites] = useState([])
   const [duelInviteLoading, setDuelInviteLoading] = useState(false)
+  const [duelInviteToast, setDuelInviteToast] = useState('')
   const autoOpenedDuelRef = useRef(null)
   const [predDuelOpen, setPredDuelOpen] = useState(false)
   const [predDuelInitialId, setPredDuelInitialId] = useState(null)
@@ -2167,10 +2168,24 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
     });
   }, [currentUser?.uid, duelOpen]);
 
+  useEffect(() => {
+    if (!currentUser?.uid) return undefined;
+    return duelService.subscribeSentInviteAccepted(currentUser.uid, (invite) => {
+      if (!invite?.sessionId) return;
+      if (duelOpen) return;
+      if (autoOpenedDuelRef.current === invite.sessionId) return;
+      autoOpenedDuelRef.current = invite.sessionId;
+      setDuelInitialSessionId(invite.sessionId);
+      setDuelOpen(true);
+    });
+  }, [currentUser?.uid, duelOpen]);
+
   const handleAcceptDuelInvite = useCallback(async (invite) => {
     setDuelInviteLoading(true);
+    setDuelInviteToast('');
     try {
       const { sessionId } = await duelService.acceptInvite(invite.id, {
+        uid: currentUser?.uid,
         username: userProfile?.username || currentUser?.username,
         avatar: userProfile?.avatar || '',
       });
@@ -2181,6 +2196,8 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       setIncomingDuelInvites((prev) => prev.filter((i) => i.id !== invite.id));
     } catch (err) {
       playErrorSound();
+      const msg = err?.message || 'Davet kabul edilemedi.';
+      setDuelInviteToast(msg);
       console.error('[Duel] accept invite:', err);
     } finally {
       setDuelInviteLoading(false);
@@ -2223,6 +2240,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
     setPredInviteLoading(true);
     try {
       const { duelId } = await predictionDuelService.acceptInvite(invite.id, {
+        uid: currentUser?.uid,
         username: userProfile?.username || currentUser?.username,
         avatar: userProfile?.avatar || '',
       });
@@ -2854,13 +2872,34 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       )}
 
       {incomingDuelInvites[0] && !duelOpen && (
-        <DuelInviteBanner
+        <>
+          {duelInviteToast && (
+            <div style={{
+              position: 'fixed',
+              top: 'calc(72px + env(safe-area-inset-top, 0px))',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 9001,
+              padding: '10px 14px',
+              borderRadius: 10,
+              background: 'rgba(239,68,68,0.15)',
+              border: '1px solid rgba(239,68,68,0.35)',
+              color: '#fca5a5',
+              fontSize: 12,
+              fontWeight: 600,
+              maxWidth: 'calc(100% - 24px)',
+            }}>
+              {duelInviteToast}
+            </div>
+          )}
+          <DuelInviteBanner
           invite={incomingDuelInvites[0]}
           theme={t}
           loading={duelInviteLoading}
           onAccept={handleAcceptDuelInvite}
           onDecline={handleDeclineDuelInvite}
         />
+        </>
       )}
 
       {predDuelOpen && (

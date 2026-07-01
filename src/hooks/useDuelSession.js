@@ -40,7 +40,7 @@ export function useDuelSession(duelId, uid) {
     setPicking(true);
     setError('');
     try {
-      await duelService.pickPlayer(duelId, playerId);
+      await duelService.pickPlayer(duelId, playerId, uid);
     } catch (err) {
       setError(err?.message || 'Seçim kaydedilemedi.');
       throw err;
