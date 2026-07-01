@@ -28,3 +28,8 @@ dist-ssr
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Firebase service account (sync scripts)
+secrets/
+*-firebase-adminsdk-*.json
+serviceAccount*.json
