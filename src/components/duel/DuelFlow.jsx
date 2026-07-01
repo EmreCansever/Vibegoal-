@@ -110,6 +110,22 @@ export default function DuelFlow({
     if (pickError) setToast(pickError);
   }, [pickError]);
 
+  // Son tur bitti ama finalize gecikirse yeniden dene
+  useEffect(() => {
+    if (!sessionId || !session) return;
+    if (session.status !== DUEL_STATUS.DRAFT) return;
+    if (session.currentRound < session.totalRounds) return;
+    if (session.myPickCount < 11 || session.theirPickCount < 11) return;
+    duelService.finalizeDuel(sessionId).catch(() => {});
+  }, [
+    sessionId,
+    session?.status,
+    session?.currentRound,
+    session?.totalRounds,
+    session?.myPickCount,
+    session?.theirPickCount,
+  ]);
+
   const handleSendInvite = useCallback(async (opponent) => {
     setInviteLoading(true);
     setToast('');

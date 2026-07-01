@@ -18,25 +18,40 @@ const SLOTS_PER_GROUP = FORMATION_SLOTS.reduce((acc, slot) => {
   return acc;
 }, {});
 
+const CHOICES_PER_PLAYER = 2;
+const PLAYERS_PER_ROUND = CHOICES_PER_PLAYER * 2;
+
 function normalizeFromSeed(player) {
   return normalizePlayerRecord(player);
 }
 
-function allocateRoundOptions(candidates, remainingInGroup, duelId, slot, index) {
-  if (candidates.length < 2) return null;
+/** Her oyuncuya her turda tam 2 seçenek */
+function allocateRoundOptions(candidates, duelId, slot, index) {
+  if (candidates.length < PLAYERS_PER_ROUND) return null;
 
   const shuffled = shuffleWithSeed(candidates, `${duelId}-${slot.id}-${index}`);
-  const canOfferTwoEach = candidates.length >= remainingInGroup * 2 + 2;
-  const perSide = canOfferTwoEach ? 2 : 1;
-  const need = perSide * 2;
-
-  if (shuffled.length < need) return null;
 
   return {
-    optionsA: shuffled.slice(0, perSide).map(toDraftCardSnapshot),
-    optionsB: shuffled.slice(perSide, perSide * 2).map(toDraftCardSnapshot),
-    used: shuffled.slice(0, need),
+    optionsA: shuffled.slice(0, CHOICES_PER_PLAYER).map(toDraftCardSnapshot),
+    optionsB: shuffled.slice(CHOICES_PER_PLAYER, PLAYERS_PER_ROUND).map(toDraftCardSnapshot),
+    used: shuffled.slice(0, PLAYERS_PER_ROUND),
   };
+}
+
+/** Kısıtlı mevki grupları önce planlansın (DEF/MID) */
+function orderSlotsForBudget(slots, byGroup, duelId) {
+  const scored = slots.map((slot) => {
+    const pool = byGroup[slot.posGroup]?.length || 0;
+    const need = SLOTS_PER_GROUP[slot.posGroup] * PLAYERS_PER_ROUND;
+    return { slot, pressure: need / Math.max(pool, 1) };
+  });
+  scored.sort((a, b) => b.pressure - a.pressure);
+  const tight = scored.filter((s) => s.pressure >= 1).map((s) => s.slot);
+  const loose = scored.filter((s) => s.pressure < 1).map((s) => s.slot);
+  return [
+    ...shuffleWithSeed(tight, `${duelId}-tight`),
+    ...shuffleWithSeed(loose, `${duelId}-loose`),
+  ];
 }
 
 export const playerService = {
@@ -118,15 +133,20 @@ export const playerService = {
     const used = new Set();
     const remainingByGroup = { ...SLOTS_PER_GROUP };
     const rounds = [];
-    const slotOrder = shuffleWithSeed([...FORMATION_SLOTS], `${duelId}-slots`);
+    const slotOrder = orderSlotsForBudget(FORMATION_SLOTS, byGroup, duelId);
 
     slotOrder.forEach((slot, index) => {
-      const remaining = remainingByGroup[slot.posGroup];
       const posCandidates = byGroup[slot.posGroup].filter((p) => !used.has(p.id));
-      const allocation = allocateRoundOptions(posCandidates, remaining, duelId, slot, index);
+      const allocation = allocateRoundOptions(posCandidates, duelId, slot, index);
 
       if (!allocation) {
         console.error(`[Draft] Yetersiz ${slot.posGroup} oyuncu — slot ${slot.id}`);
+        return;
+      }
+
+      if (allocation.optionsA.length < CHOICES_PER_PLAYER
+        || allocation.optionsB.length < CHOICES_PER_PLAYER) {
+        console.error(`[Draft] Tur başına 2 seçenek üretilemedi — slot ${slot.id}`);
         return;
       }
 

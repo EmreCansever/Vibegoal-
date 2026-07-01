@@ -1,8 +1,7 @@
 /**
- * Önbelleklenmiş oyuncu havuzu — dış API çağrısı yok.
- * photoId → media.api-sports.io CDN (doğrulanmış ID'ler)
+ * Önbelleklenmiş oyuncu havuzu — photoId → media.api-sports.io CDN
  */
-export const PLAYERS_SEED_VERSION = 5;
+export const PLAYERS_SEED_VERSION = 7;
 
 export const PLAYERS_SEED = [
   { id: 'pl_001', name: 'Alisson', team: 'Liverpool', position: 'GK', age: 31, heightCm: 193, marketValueM: 28, photoId: 283 },
@@ -50,4 +49,17 @@ export const PLAYERS_SEED = [
   { id: 'pl_043', name: 'Vinicius', team: 'Real Madrid', position: 'FWD', age: 24, heightCm: 176, marketValueM: 170, photoId: 762 },
   { id: 'pl_044', name: 'Raphinha', team: 'Barcelona', position: 'FWD', age: 28, heightCm: 176, marketValueM: 80, photoId: 1496 },
   { id: 'pl_045', name: 'Saka', team: 'Arsenal', position: 'FWD', age: 23, heightCm: 178, marketValueM: 130, photoId: 1460 },
+  { id: 'pl_046', name: 'Bastoni', team: 'Inter', position: 'DEF', age: 25, heightCm: 190, marketValueM: 75, photoId: 135839 },
+  { id: 'pl_047', name: 'Gabriel', team: 'Arsenal', position: 'DEF', age: 27, heightCm: 190, marketValueM: 65, photoId: 22224 },
+  { id: 'pl_048', name: 'Kounde', team: 'Barcelona', position: 'DEF', age: 27, heightCm: 180, marketValueM: 60, photoId: 678 },
+  { id: 'pl_049', name: 'Walker', team: 'Man City', position: 'DEF', age: 35, heightCm: 183, marketValueM: 12, photoId: 627 },
+  { id: 'pl_050', name: 'De Ligt', team: 'Bayern', position: 'DEF', age: 26, heightCm: 189, marketValueM: 55, photoId: 1454 },
+  { id: 'pl_051', name: 'Cucurella', team: 'Chelsea', position: 'DEF', age: 27, heightCm: 175, marketValueM: 35, photoId: 18806 },
+  { id: 'pl_052', name: 'Carvajal', team: 'Real Madrid', position: 'DEF', age: 33, heightCm: 173, marketValueM: 18, photoId: 735 },
+  { id: 'pl_053', name: 'Bremer', team: 'Juventus', position: 'DEF', age: 28, heightCm: 188, marketValueM: 50, photoId: 70188 },
+  { id: 'pl_054', name: 'Rice', team: 'Arsenal', position: 'MID', age: 26, heightCm: 188, marketValueM: 110, photoId: 2937 },
+  { id: 'pl_055', name: 'Valverde', team: 'Real Madrid', position: 'MID', age: 27, heightCm: 182, marketValueM: 100, photoId: 2468 },
+  { id: 'pl_056', name: 'Bruno Fernandes', team: 'Man Utd', position: 'MID', age: 30, heightCm: 179, marketValueM: 55, photoId: 902 },
+  { id: 'pl_057', name: 'Rodri', team: 'Man City', position: 'MID', age: 29, heightCm: 191, marketValueM: 90, photoId: 44 },
+  { id: 'pl_058', name: 'Gavi', team: 'Barcelona', position: 'MID', age: 21, heightCm: 173, marketValueM: 85, photoId: 161933 },
 ];

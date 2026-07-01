@@ -73,10 +73,10 @@ export function buildRevealResult(session, playerMap) {
   const squadA = Object.values(picksA).map((id) => playerMap[id]).filter(Boolean);
   const squadB = Object.values(picksB).map((id) => playerMap[id]).filter(Boolean);
 
-  const scoreA = computeSquadScore(squadA, session.challengeId);
-  const scoreB = computeSquadScore(squadB, session.challengeId);
-  const winnerSide = determineWinner(session.challengeId, scoreA, scoreB);
-  const winnerUid = resolveWinnerUid(session, winnerSide);
+  const scoreA = session.scoreA ?? computeSquadScore(squadA, session.challengeId);
+  const scoreB = session.scoreB ?? computeSquadScore(squadB, session.challengeId);
+  const winnerSide = session.winnerSide ?? determineWinner(session.challengeId, scoreA, scoreB);
+  const winnerUid = session.winnerUid ?? resolveWinnerUid(session, winnerSide);
 
   return {
     scoreA,
@@ -87,4 +87,37 @@ export function buildRevealResult(session, playerMap) {
     squadB,
     challenge: getChallengeById(session.challengeId),
   };
+}
+
+/** Oturumdaki tüm pick id'leri */
+export function collectSessionPlayerIds(session) {
+  const ids = new Set();
+  Object.values(session?.picks || {}).forEach((bySlot) => {
+    if (bySlot && typeof bySlot === 'object') {
+      Object.values(bySlot).forEach((id) => {
+        if (typeof id === 'string' && id) ids.add(id);
+      });
+    }
+  });
+  return ids;
+}
+
+/** Draft kart snapshot'larından anında oyuncu haritası */
+export function buildPlayerMapFromDraft(session) {
+  const map = {};
+  (session?.draftRounds || []).forEach((round) => {
+    const bundles = round.optionsByPlayer
+      ? Object.values(round.optionsByPlayer)
+      : round.options ? [round.options] : [];
+    bundles.forEach((opts) => {
+      (opts || []).forEach((snap) => {
+        if (snap?.id) map[snap.id] = { ...map[snap.id], ...snap };
+      });
+    });
+  });
+  return map;
+}
+
+export function mergePlayerMaps(...maps) {
+  return Object.assign({}, ...maps);
 }

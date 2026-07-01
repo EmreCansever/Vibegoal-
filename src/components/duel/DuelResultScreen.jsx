@@ -2,33 +2,81 @@ import { useEffect, useState, useRef } from 'react';
 import DuelFormationPitch from './DuelFormationPitch';
 import PlayerAvatar from './PlayerAvatar';
 import { playerService } from '../../services/playerService';
-import { buildRevealResult, formatChallengeMetric } from '../../utils/duelEngine';
+import {
+  buildRevealResult,
+  buildPlayerMapFromDraft,
+  collectSessionPlayerIds,
+  mergePlayerMaps,
+  formatChallengeMetric,
+} from '../../utils/duelEngine';
 import { playSuccessSound, playDefeatSound, playRevealSound } from '../../utils/audioEngine';
+
+function buildFallbackMap(session) {
+  const draftMap = buildPlayerMapFromDraft(session);
+  const ids = collectSessionPlayerIds(session);
+  ids.forEach((id) => {
+    if (!draftMap[id]) draftMap[id] = { id, name: 'Oyuncu' };
+  });
+  return draftMap;
+}
 
 export default function DuelResultScreen({ session, theme, currentUser, onClose, onRematch }) {
   const t = theme;
   const [playerMap, setPlayerMap] = useState({});
   const [result, setResult] = useState(null);
+  const [loadError, setLoadError] = useState('');
   const soundPlayedRef = useRef(false);
 
   useEffect(() => {
-    if (!session) return;
-    const ids = new Set();
-    Object.values(session.picks || {}).forEach((slots) => {
-      Object.values(slots).forEach((id) => ids.add(id));
-    });
-    playerService.getPlayersByIds([...ids]).then((map) => {
+    if (!session?.id) return undefined;
+    let cancelled = false;
+
+    const draftMap = buildPlayerMapFromDraft(session);
+    const ids = collectSessionPlayerIds(session);
+    draftMap && Object.keys(draftMap).forEach((id) => ids.add(id));
+
+    const applyResult = (map) => {
+      const built = buildRevealResult(session, map);
       setPlayerMap(map);
-      setResult(buildRevealResult(session, map));
-    });
-  }, [session]);
+      setResult(built);
+      setLoadError('');
+    };
+
+    // Draft snapshot'larından anında göster — Firestore beklemeden
+    if (ids.size > 0 || session.scoreA != null) {
+      applyResult(buildFallbackMap(session));
+    }
+
+    if (ids.size === 0 && session.scoreA == null) {
+      setLoadError('Kadro verisi bulunamadı.');
+      return undefined;
+    }
+
+    playerService.getPlayersByIds([...ids])
+      .then((remoteMap) => {
+        if (cancelled) return;
+        const merged = mergePlayerMaps(draftMap, remoteMap);
+        [...ids].forEach((id) => {
+          if (!merged[id]) merged[id] = draftMap[id] || { id, name: 'Oyuncu' };
+        });
+        applyResult(merged);
+      })
+      .catch((err) => {
+        console.warn('[DuelResult] Oyuncu yükleme hatası:', err);
+        if (!cancelled) {
+          applyResult(buildFallbackMap(session));
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [session?.id, session?.version, session?.status, session?.scoreA, session?.scoreB]);
 
   useEffect(() => {
     if (!result || !session || soundPlayedRef.current) return;
     soundPlayedRef.current = true;
     playRevealSound();
-    const isDraw = !session.winnerUid;
-    const isWinner = session.winnerUid === currentUser.uid;
+    const isDraw = !session.winnerUid && !result.winnerUid;
+    const isWinner = (session.winnerUid ?? result.winnerUid) === currentUser?.uid;
     setTimeout(() => {
       if (isDraw) return;
       if (isWinner) playSuccessSound();
@@ -36,16 +84,28 @@ export default function DuelResultScreen({ session, theme, currentUser, onClose,
     }, 350);
   }, [result, session, currentUser?.uid]);
 
-  if (!session || !result) {
+  if (!session || (!result && !loadError)) {
     return <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>Sonuç hesaplanıyor...</div>;
   }
 
-  const isPlayerA = session.playerAUid === currentUser.uid;
+  if (loadError && !result) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>
+        <div style={{ marginBottom: 12 }}>{loadError}</div>
+        <button type="button" onClick={onClose} style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: t.accent, color: t.tabActiveText, fontWeight: 700, cursor: 'pointer' }}>
+          Kapat
+        </button>
+      </div>
+    );
+  }
+
+  const uid = currentUser?.uid;
+  const isPlayerA = session.playerAUid === uid;
   const myScore = isPlayerA ? result.scoreA : result.scoreB;
   const theirScore = isPlayerA ? result.scoreB : result.scoreA;
-
-  const isWinner = session.winnerUid === currentUser.uid;
-  const isDraw = !session.winnerUid;
+  const winnerUid = session.winnerUid ?? result.winnerUid;
+  const isWinner = winnerUid === uid;
+  const isDraw = !winnerUid;
 
   return (
     <div style={{
@@ -70,7 +130,7 @@ export default function DuelResultScreen({ session, theme, currentUser, onClose,
         <div style={{ flex: 1, textAlign: 'center' }}>
           <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>SEN</div>
           <div style={{ fontSize: 22, fontWeight: 900, color: t.accent }}>
-            {myScore.toFixed(result.challenge.metric === 'marketValueM' ? 1 : 1)}
+            {Number(myScore).toFixed(result.challenge.metric === 'marketValueM' ? 1 : 1)}
           </div>
           <div style={{ fontSize: 10, color: '#555' }}>{result.challenge.unit}</div>
         </div>
@@ -78,7 +138,7 @@ export default function DuelResultScreen({ session, theme, currentUser, onClose,
         <div style={{ flex: 1, textAlign: 'center' }}>
           <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>RAKİP</div>
           <div style={{ fontSize: 22, fontWeight: 900, color: '#fff' }}>
-            {theirScore.toFixed(result.challenge.metric === 'marketValueM' ? 1 : 1)}
+            {Number(theirScore).toFixed(result.challenge.metric === 'marketValueM' ? 1 : 1)}
           </div>
           <div style={{ fontSize: 10, color: '#555' }}>{result.challenge.unit}</div>
         </div>
@@ -87,7 +147,7 @@ export default function DuelResultScreen({ session, theme, currentUser, onClose,
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: '#888', marginBottom: 8 }}>SENİN İLK 11</div>
         <DuelFormationPitch
-          picks={session.picks?.[currentUser.uid] || {}}
+          picks={session.picks?.[uid] || {}}
           playerMap={playerMap}
           theme={t}
           challenge={result.challenge}

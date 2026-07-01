@@ -31,6 +31,8 @@ export default function DuelDraftScreen({
   const myOptions = session?.myRoundOptions || [];
   const alreadyPicked = !!session?.myRoundPick;
   const isReveal = session?.status === DUEL_STATUS.REVEAL || session?.status === DUEL_STATUS.FINISHED;
+  const waitingForResult = session?.status === DUEL_STATUS.DRAFT
+    && session.currentRound >= session.totalRounds;
 
   useEffect(() => {
     if (!session) return;
@@ -40,7 +42,34 @@ export default function DuelDraftScreen({
     playerService.getPlayersByIds([...ids]).then(setPlayerMap);
   }, [session]);
 
-  if (!session || !round) {
+  if (!session) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>
+        Draft odası yükleniyor...
+      </div>
+    );
+  }
+
+  if (waitingForResult) {
+    return (
+      <div style={{
+        flex: 1, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center',
+      }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: '50%',
+          border: `3px solid ${t.accentBorder}`,
+          borderTopColor: t.accent,
+          animation: 'vg-spin 0.9s linear infinite',
+          marginBottom: 16,
+        }} />
+        <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 6 }}>Sonuç hesaplanıyor…</div>
+        <div style={{ fontSize: 12, color: '#666' }}>11/11 seçim tamam — skorlar açılıyor</div>
+      </div>
+    );
+  }
+
+  if (!round) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>
         Draft odası yükleniyor...
@@ -54,7 +83,7 @@ export default function DuelDraftScreen({
       ...merged,
       name: opt.name || merged.name,
       team: opt.team || merged.team,
-      photoUrl: resolvePlayerPhotoUrl(merged),
+      photoUrl: merged.photoUrl || resolvePlayerPhotoUrl(merged) || null,
       age: opt.age ?? merged.age,
       heightCm: opt.heightCm ?? merged.heightCm,
       marketValueM: opt.marketValueM ?? merged.marketValueM,
@@ -119,6 +148,10 @@ export default function DuelDraftScreen({
               color: t.accent, fontSize: 13, fontWeight: 700,
             }}>
               ✓ Seçimin kaydedildi — rakip seçimini yapınca tur ilerler
+            </div>
+          ) : enrichedOptions.length < 2 ? (
+            <div style={{ textAlign: 'center', padding: 20, color: '#888', fontSize: 12 }}>
+              Seçenekler yükleniyor…
             </div>
           ) : (
             <div style={{ display: 'flex', gap: 12 }}>

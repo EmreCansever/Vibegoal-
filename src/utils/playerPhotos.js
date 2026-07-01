@@ -1,37 +1,51 @@
-import { PLAYER_PHOTO_MAP } from '../data/playerPhotoMap';
+/** API-Sports oyuncu foto CDN */
+export const API_SPORTS_PHOTO_BASE = 'https://media.api-sports.io/football/players';
 
-export function fallbackPhotoUrl(name = 'Player') {
-  const label = encodeURIComponent(String(name).trim() || 'Player');
-  return `https://ui-avatars.com/api/?name=${label}&background=27272a&color=a3e635&size=256&bold=true&format=png`;
+export function buildApiSportsPhotoUrl(photoId) {
+  const id = Number(photoId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  return `${API_SPORTS_PHOTO_BASE}/${id}.png`;
 }
 
-/** Oyuncu objesinden görüntülenecek foto URL */
+/** Oyuncu objesinden görüntülenecek foto URL — boşsa null */
 export function resolvePlayerPhotoUrl(player) {
-  if (!player) return fallbackPhotoUrl('Player');
-  if (player.id && PLAYER_PHOTO_MAP[player.id]) return PLAYER_PHOTO_MAP[player.id];
-  if (player.photoUrl && !player.photoUrl.includes('api-sports.io')) return player.photoUrl;
-  return fallbackPhotoUrl(player.name);
+  if (!player) return null;
+
+  const direct = player.photoUrl || player.photo || player.photoURL;
+  if (typeof direct === 'string' && direct.trim()) {
+    return direct.trim();
+  }
+
+  return buildApiSportsPhotoUrl(player.photoId);
+}
+
+export function hasPlayerPhoto(player) {
+  return !!resolvePlayerPhotoUrl(player);
 }
 
 /** Firestore'a yazılacak normalize edilmiş oyuncu */
 export function normalizePlayerRecord(player) {
-  const photoUrl = resolvePlayerPhotoUrl(player);
+  const photoId = player.photoId ?? player.apiPlayerId ?? null;
+  const photoUrl = resolvePlayerPhotoUrl({ ...player, photoId });
+
   return {
     ...player,
-    photoUrl,
-    photoId: null,
+    photoId,
+    photoUrl: photoUrl || null,
     updatedAt: Date.now(),
   };
 }
 
 /** Draft kartı için hafif snapshot */
 export function toDraftCardSnapshot(player) {
+  const photoUrl = resolvePlayerPhotoUrl(player);
   return {
     id: player.id,
     name: player.name,
     team: player.team,
     position: player.position,
-    photoUrl: resolvePlayerPhotoUrl(player),
+    photoUrl: photoUrl || null,
+    photoId: player.photoId ?? null,
     age: player.age,
     heightCm: player.heightCm,
     marketValueM: player.marketValueM,
