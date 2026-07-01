@@ -557,7 +557,7 @@ export default function GroupChat({ roomName = 'Grup Sohbeti', currentUser, user
       {/* ── INPUT AREA ──────────────────────────── */}
       <div style={{
         padding: '10px 14px',
-        paddingBottom: 'calc(14px + env(safe-area-inset-bottom, 0px))',
+        paddingBottom: '14px',
         background: 'rgba(255,255,255,0.03)',
         borderTop: '1px solid rgba(255,255,255,0.07)',
         flexShrink: 0,

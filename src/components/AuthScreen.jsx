@@ -237,7 +237,7 @@ export default function AuthScreen({ onAuth }) {
   }
 
   return (
-    <div className="vg-screen-fill" style={{
+    <div className="vg-screen-fill vg-screen-standalone" style={{
       width: '100%',
       background: '#18181b',
       display: 'flex',

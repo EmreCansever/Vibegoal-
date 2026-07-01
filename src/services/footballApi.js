@@ -183,3 +183,44 @@ export async function fetchWeeklyFixtures(leagueId, season = CURRENT_SEASON) {
   const fixtures = data.response || []
   return fixtures.map(mapFixtureToMatch).slice(0, 6) // max 6 kart
 }
+
+/** Tek maç detayı — fikstür + istatistik + kadro */
+export async function fetchMatchDetail(fixtureId) {
+  const id = Number(fixtureId)
+  if (!id) return null
+
+  const [fixtureRes, statsRes, lineupsRes] = await Promise.all([
+    apiFetch('/fixtures', { id }),
+    apiFetch('/fixtures/statistics', { fixture: id }),
+    apiFetch('/fixtures/lineups', { fixture: id }),
+  ])
+
+  const fixtureItem = fixtureRes.response?.[0]
+  if (!fixtureItem) return null
+
+  const statistics = statsRes.response || []
+  const lineups = lineupsRes.response || []
+
+  return {
+    ...mapFixtureToMatch({ ...fixtureItem, statistics }),
+    statistics,
+    lineups,
+  }
+}
+
+/** Maç kartından detay sayfasına geçerken anlık önbellek */
+export function cacheMatchSnapshot(match) {
+  if (!match?.id) return
+  try {
+    sessionStorage.setItem(`vg_match_${match.id}`, JSON.stringify(match))
+  } catch { /* ignore */ }
+}
+
+export function loadCachedMatch(fixtureId) {
+  try {
+    const raw = sessionStorage.getItem(`vg_match_${String(fixtureId)}`)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}

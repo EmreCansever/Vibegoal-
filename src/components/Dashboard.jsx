@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { playClickSound, playGoalSound, playSendSound, playSuccessSound } from '../utils/audioEngine'
 import { THEMES, withGlowOpacity } from '../App'
 import GroupChat from './GroupChat'
+import DuelFlow from './duel/DuelFlow'
 import {
   calculateMatchPoints,
   calculateQuestionPoints,
@@ -15,6 +16,7 @@ import {
   fetchMatches,
   fetchLiveMatches,
   fetchWeeklyFixtures,
+  cacheMatchSnapshot,
   LEAGUE_IDS,
   CURRENT_SEASON,
 } from '../services/footballApi'
@@ -2616,6 +2618,12 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
   const roomName = activeRoom?.name || ''
 
+  function openMatchDetail(match) {
+    if (!match?.id) return
+    cacheMatchSnapshot(match)
+    onNavigate('match/' + match.id)
+  }
+
   // Mockup HOME için türetilen veriler (ekstra veri yok — gerçek state'ten)
   const featuredMatch = matches && matches.length > 0 ? matches[0] : null
   const otherMatches  = matches && matches.length > 1 ? matches.slice(1) : []
@@ -2654,18 +2662,18 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
       {/* Düello Modu */}
       {duelOpen && (
-        <DuelScreen
+        <DuelFlow
+          open={duelOpen}
           onClose={() => setDuelOpen(false)}
-          leaderboard={leaderboard}
-          totalPoints={totalPoints}
-          meName={userProfile?.username || currentUser?.username || 'Sen'}
-          meAvatar={userProfile?.avatar || ''}
           theme={t}
+          currentUser={currentUser}
+          userProfile={userProfile}
+          opponents={leaderboard}
           onWin={() => {
-            playGoalSound()
-            setTotalPoints(p => p + 50)
-            setToastEvent({ points: 50, reason: '🏆 Düello Kazanıldı!', tier: 'exact' })
-            updateMyPoints(50, 1)
+            playGoalSound();
+            setTotalPoints((p) => p + 50);
+            setToastEvent({ points: 50, reason: '🏆 Canlı Düello Kazanıldı!', tier: 'exact' });
+            updateMyPoints(50, 1);
           }}
         />
       )}
@@ -2879,7 +2887,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                 <button onClick={handleRetry} style={{ marginTop: 12, padding: '8px 18px', borderRadius: 10, background: 'rgba(244,63,94,0.15)', border: '1px solid rgba(244,63,94,0.35)', color: '#f43f5e', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>🔄 Tekrar Dene</button>
               </div>
             ) : (
-              <FeaturedMatch match={featuredMatch} theme={t} onClick={() => featuredMatch && onNavigate('match/' + featuredMatch.id)} />
+              <FeaturedMatch match={featuredMatch} theme={t} onClick={() => featuredMatch && openMatchDetail(featuredMatch)} />
             )}
 
             {/* ── Günün maçları ───────────────────── */}
@@ -2893,7 +2901,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                 ) : (
                   <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {otherMatches.map((m, i) => (
-                      <MatchRow key={m.id} match={m} theme={t} delay={i * 0.05} onClick={() => onNavigate('match/' + m.id)} />
+                      <MatchRow key={m.id} match={m} theme={t} delay={i * 0.05} onClick={() => openMatchDetail(m)} />
                     ))}
                   </div>
                 )}

@@ -376,3 +376,5 @@ export const dbService = {
 };
 
 export { roomService } from './roomService';
+export { duelService } from './duelService';
+export { playerService } from './playerService';
