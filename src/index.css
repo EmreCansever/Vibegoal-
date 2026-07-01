@@ -350,3 +350,7 @@ select:focus-visible {
   from { opacity: 0; transform: translate(-50%, -16px); }
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
+
+@keyframes vg-spin {
+  to { transform: rotate(360deg); }
+}

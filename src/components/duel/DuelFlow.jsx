@@ -3,14 +3,13 @@ import DuelChallengePicker from './DuelChallengePicker';
 import DuelOpponentPicker from './DuelOpponentPicker';
 import DuelDraftScreen from './DuelDraftScreen';
 import DuelResultScreen from './DuelResultScreen';
-import DuelInviteBanner from './DuelInviteBanner';
 import { duelService } from '../../services/duelService';
 import { DUEL_STATUS } from '../../constants/duelChallenges';
 import { useDuelSession, useActiveDuelSession } from '../../hooks/useDuelSession';
 
 /**
  * Canlı Düello — Firestore Session Room akışı
- * phase: hub | opponent | draft | result
+ * phase: hub | opponent | waiting | draft | result
  */
 export default function DuelFlow({
   open,
@@ -20,12 +19,14 @@ export default function DuelFlow({
   opponents = [],
   userProfile,
   onWin,
+  initialSessionId = null,
+  onInitialSessionConsumed,
 }) {
   const t = theme;
   const [phase, setPhase] = useState('hub');
   const [challengeId, setChallengeId] = useState(null);
   const [sessionId, setSessionId] = useState(null);
-  const [incomingInvites, setIncomingInvites] = useState([]);
+  const [pendingInviteId, setPendingInviteId] = useState(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [toast, setToast] = useState('');
   const winHandledRef = useRef(false);
@@ -39,13 +40,13 @@ export default function DuelFlow({
   } = useDuelSession(sessionId, currentUser?.uid);
 
   const handleResumeSession = useCallback((active) => {
-    if (!active?.id || sessionId) return;
-    setSessionId(active.id);
+    if (!active?.id) return;
+    setSessionId((prev) => (prev === active.id ? prev : active.id));
     if (active.status === DUEL_STATUS.DRAFT) setPhase('draft');
     else if (active.status === DUEL_STATUS.REVEAL || active.status === DUEL_STATUS.FINISHED) {
       setPhase('result');
     }
-  }, [sessionId]);
+  }, []);
 
   useActiveDuelSession(currentUser?.uid, handleResumeSession);
 
@@ -54,14 +55,36 @@ export default function DuelFlow({
       setPhase('hub');
       setChallengeId(null);
       setSessionId(null);
+      setPendingInviteId(null);
       winHandledRef.current = false;
     }
   }, [open]);
 
   useEffect(() => {
-    if (!currentUser?.uid) return undefined;
-    return duelService.subscribeIncomingInvites(currentUser.uid, setIncomingInvites);
-  }, [currentUser?.uid]);
+    if (!open || !initialSessionId) return;
+    setSessionId(initialSessionId);
+    setPhase('draft');
+    setPendingInviteId(null);
+    onInitialSessionConsumed?.();
+  }, [open, initialSessionId, onInitialSessionConsumed]);
+
+  useEffect(() => {
+    if (!pendingInviteId || phase !== 'waiting') return undefined;
+    return duelService.subscribeInvite(pendingInviteId, currentUser?.uid, (invite) => {
+      if (!invite) return;
+      if (invite.status === 'accepted' && invite.sessionId) {
+        setPendingInviteId(null);
+        setSessionId(invite.sessionId);
+        setPhase('draft');
+        winHandledRef.current = false;
+      }
+      if (invite.status === 'declined') {
+        setToast('Rakip daveti reddetti.');
+        setPendingInviteId(null);
+        setPhase('opponent');
+      }
+    });
+  }, [pendingInviteId, phase, currentUser?.uid]);
 
   useEffect(() => {
     if (!session) return;
@@ -87,7 +110,7 @@ export default function DuelFlow({
     setInviteLoading(true);
     setToast('');
     try {
-      await duelService.sendInvite({
+      const invite = await duelService.sendInvite({
         toUid: opponent.id,
         challengeId,
         fromProfile: {
@@ -95,55 +118,31 @@ export default function DuelFlow({
           avatar: userProfile?.avatar || '',
         },
       });
-      setToast(`✓ ${opponent.name} oyuncusuna davet gönderildi!`);
-      setTimeout(() => {
-        setToast('');
-        onClose();
-      }, 2000);
+      setPendingInviteId(invite.id);
+      setPhase('waiting');
+      setToast(`✓ ${opponent.name} oyuncusuna davet gönderildi — kabul bekleniyor…`);
     } catch (err) {
       setToast(err?.message || 'Davet gönderilemedi.');
     } finally {
       setInviteLoading(false);
     }
-  }, [challengeId, currentUser, userProfile, onClose]);
+  }, [challengeId, currentUser, userProfile]);
 
-  const handleAcceptInvite = useCallback(async (invite) => {
-    setInviteLoading(true);
-    try {
-      const { sessionId: sid } = await duelService.acceptInvite(invite.id, {
-        username: userProfile?.username || currentUser?.username,
-        avatar: userProfile?.avatar || '',
-      });
-      setSessionId(sid);
-      setPhase('draft');
-      winHandledRef.current = false;
-    } catch (err) {
-      setToast(err?.message || 'Davet kabul edilemedi.');
-    } finally {
-      setInviteLoading(false);
+  const handleCancelWaiting = useCallback(async () => {
+    if (pendingInviteId) {
+      try {
+        await duelService.cancelInvite(pendingInviteId);
+      } catch { /* ignore */ }
     }
-  }, [currentUser, userProfile]);
-
-  const handleDeclineInvite = useCallback(async (invite) => {
-    await duelService.declineInvite(invite.id);
-  }, []);
+    setPendingInviteId(null);
+    setPhase('opponent');
+    setToast('');
+  }, [pendingInviteId]);
 
   if (!open) return null;
 
-  const pendingInvite = incomingInvites[0];
-
   return (
     <>
-      {pendingInvite && phase === 'hub' && !sessionId && (
-        <DuelInviteBanner
-          invite={pendingInvite}
-          theme={t}
-          loading={inviteLoading}
-          onAccept={handleAcceptInvite}
-          onDecline={handleDeclineInvite}
-        />
-      )}
-
       <div
         style={{
           position: 'fixed', inset: 0, zIndex: 450,
@@ -211,6 +210,36 @@ export default function DuelFlow({
             onSelect={handleSendInvite}
             onBack={() => setPhase('hub')}
           />
+        )}
+
+        {phase === 'waiting' && (
+          <div style={{
+            flex: 1, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center',
+          }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: '50%',
+              border: `3px solid ${t.accentBorder}`,
+              borderTopColor: t.accent,
+              animation: 'vg-spin 0.9s linear infinite',
+              marginBottom: 20,
+            }} />
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>Rakip bekleniyor…</div>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 24, lineHeight: 1.5 }}>
+              Davet anlık iletildi. Rakip kabul edince draft otomatik başlayacak.
+            </div>
+            <button
+              type="button"
+              onClick={handleCancelWaiting}
+              style={{
+                padding: '10px 20px', borderRadius: 10,
+                border: `1px solid ${t.border}`, background: 'transparent',
+                color: '#aaa', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+              }}
+            >
+              Daveti İptal Et
+            </button>
+          </div>
         )}
 
         {phase === 'draft' && session && (

@@ -3,6 +3,9 @@ import { playClickSound, playGoalSound, playSendSound, playSuccessSound } from '
 import { THEMES, withGlowOpacity } from '../App'
 import GroupChat from './GroupChat'
 import DuelFlow from './duel/DuelFlow'
+import DuelInviteBanner from './duel/DuelInviteBanner'
+import { duelService } from '../services/duelService'
+import { DUEL_STATUS } from '../constants/duelChallenges'
 import {
   calculateMatchPoints,
   calculateQuestionPoints,
@@ -2103,6 +2106,10 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [activeTab, setActiveTab]     = useState('matches') // 'matches' (home) | 'chat'
   const [showLeagues, setShowLeagues] = useState(false)     // üst bardaki arama/lig filtresi
   const [duelOpen, setDuelOpen]       = useState(false)
+  const [duelInitialSessionId, setDuelInitialSessionId] = useState(null)
+  const [incomingDuelInvites, setIncomingDuelInvites] = useState([])
+  const [duelInviteLoading, setDuelInviteLoading] = useState(false)
+  const autoOpenedDuelRef = useRef(null)
   const [selectedPredictMatch, setSelectedPredictMatch] = useState(null)
 
   /* ── Sidebar drawer state ────────────────────── */
@@ -2117,6 +2124,48 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [avatarInput, setAvatarInput]     = useState(userProfile?.avatar || '')
   const [bioInput, setBioInput]           = useState(userProfile?.bio || '')
   const photoInputRef                     = useRef(null)
+
+  /* ── Canlı düello: global davet + oturum dinleyicileri ── */
+  useEffect(() => {
+    if (!currentUser?.uid) return undefined;
+    return duelService.subscribeIncomingInvites(currentUser.uid, setIncomingDuelInvites);
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (!currentUser?.uid) return undefined;
+    return duelService.subscribeActiveSession(currentUser.uid, (active) => {
+      if (!active?.id) return;
+      if (duelOpen) return;
+      if (autoOpenedDuelRef.current === active.id) return;
+      if (active.status !== DUEL_STATUS.DRAFT && active.status !== DUEL_STATUS.REVEAL) return;
+      autoOpenedDuelRef.current = active.id;
+      setDuelInitialSessionId(active.id);
+      setDuelOpen(true);
+    });
+  }, [currentUser?.uid, duelOpen]);
+
+  const handleAcceptDuelInvite = useCallback(async (invite) => {
+    setDuelInviteLoading(true);
+    try {
+      const { sessionId } = await duelService.acceptInvite(invite.id, {
+        username: userProfile?.username || currentUser?.username,
+        avatar: userProfile?.avatar || '',
+      });
+      autoOpenedDuelRef.current = sessionId;
+      setDuelInitialSessionId(sessionId);
+      setDuelOpen(true);
+      setIncomingDuelInvites((prev) => prev.filter((i) => i.id !== invite.id));
+    } catch (err) {
+      console.error('[Duel] accept invite:', err);
+    } finally {
+      setDuelInviteLoading(false);
+    }
+  }, [currentUser, userProfile]);
+
+  const handleDeclineDuelInvite = useCallback(async (invite) => {
+    await duelService.declineInvite(invite.id);
+    setIncomingDuelInvites((prev) => prev.filter((i) => i.id !== invite.id));
+  }, []);
 
   // Password fields state
   const [currentPassword, setCurrentPassword] = useState('')
@@ -2660,6 +2709,17 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
 
 
+      {/* Gelen düello daveti — uygulama genelinde anlık */}
+      {incomingDuelInvites[0] && !duelOpen && (
+        <DuelInviteBanner
+          invite={incomingDuelInvites[0]}
+          theme={t}
+          loading={duelInviteLoading}
+          onAccept={handleAcceptDuelInvite}
+          onDecline={handleDeclineDuelInvite}
+        />
+      )}
+
       {/* Düello Modu */}
       {duelOpen && (
         <DuelFlow
@@ -2669,6 +2729,8 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
           currentUser={currentUser}
           userProfile={userProfile}
           opponents={leaderboard}
+          initialSessionId={duelInitialSessionId}
+          onInitialSessionConsumed={() => setDuelInitialSessionId(null)}
           onWin={() => {
             playGoalSound();
             setTotalPoints((p) => p + 50);

@@ -179,6 +179,16 @@ export const duelService = {
     await updateDoc(ref, { status: 'declined', updatedAt: serverTimestamp() });
   },
 
+  async cancelInvite(inviteId) {
+    if (!this.isAvailable()) return;
+    const uid = resolveAuthUid();
+    const ref = doc(db, 'duel_invites', inviteId);
+    const snap = await getDoc(ref);
+    if (!snap.exists() || snap.data().fromUid !== uid) return;
+    if (snap.data().status !== 'pending') return;
+    await updateDoc(ref, { status: 'cancelled', updatedAt: serverTimestamp() });
+  },
+
   /** Tur seçimi — Firestore transaction ile atomik senkron */
   async pickPlayer(sessionId, playerId) {
     if (!this.isAvailable()) throw new Error('Firebase yapılandırılmamış.');
@@ -284,6 +294,24 @@ export const duelService = {
     }
 
     return committed ? computed : null;
+  },
+
+  /** Tek davet belgesi — gönderen tarafında anlık kabul/red */
+  subscribeInvite(inviteId, uid, callback) {
+    if (!this.isAvailable() || !inviteId) {
+      callback(null);
+      return () => {};
+    }
+
+    const ref = doc(db, 'duel_invites', inviteId);
+    return onSnapshot(
+      ref,
+      (snap) => callback(mapInvite(snap, uid)),
+      (err) => {
+        console.error('[DuelRoom] invite doc listener:', err);
+        callback(null);
+      },
+    );
   },
 
   /** Gelen davetler — onSnapshot */
