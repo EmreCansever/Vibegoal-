@@ -151,11 +151,8 @@ export default function DuelFlow({
         onClick={phase === 'hub' ? onClose : undefined}
       />
 
-      <div className="vg-screen-fill" style={{
-        position: 'fixed', inset: 0, zIndex: 451,
-        maxWidth: 600, margin: '0 auto',
+      <div className="vg-duel-screen" style={{
         background: t.bg,
-        display: 'flex', flexDirection: 'column',
         fontFamily: 'Inter,sans-serif',
         color: '#fff',
       }}>

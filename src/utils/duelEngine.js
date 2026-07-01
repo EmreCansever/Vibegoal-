@@ -56,6 +56,16 @@ export function resolveWinnerUid(session, winnerSide) {
   return session.playerBUid;
 }
 
+export function formatChallengeMetric(player, challenge) {
+  if (!player || !challenge) return '—';
+  const val = Number(player[challenge.metric]);
+  if (!Number.isFinite(val)) return '—';
+  if (challenge.metric === 'age') return `${val} yaş`;
+  if (challenge.metric === 'heightCm') return `${val} cm`;
+  if (challenge.metric === 'marketValueM') return `${val}M€`;
+  return String(val);
+}
+
 export function buildRevealResult(session, playerMap) {
   const picksA = session.picks?.[session.playerAUid] || {};
   const picksB = session.picks?.[session.playerBUid] || {};

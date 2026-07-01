@@ -4,6 +4,18 @@ import DuelPlayerCard from './DuelPlayerCard';
 import { playerService } from '../../services/playerService';
 import { DUEL_STATUS } from '../../constants/duelChallenges';
 
+function collectRoundPlayerIds(rounds = []) {
+  const ids = new Set();
+  rounds.forEach((r) => {
+    if (r.optionsByPlayer) {
+      Object.values(r.optionsByPlayer).forEach((opts) => opts.forEach((o) => ids.add(o.id)));
+    } else if (r.options) {
+      r.options.forEach((o) => ids.add(o.id));
+    }
+  });
+  return ids;
+}
+
 export default function DuelDraftScreen({
   session,
   theme,
@@ -15,13 +27,13 @@ export default function DuelDraftScreen({
   const [playerMap, setPlayerMap] = useState({});
 
   const round = session?.activeRound;
+  const myOptions = session?.myRoundOptions || [];
   const alreadyPicked = !!session?.myRoundPick;
   const isReveal = session?.status === DUEL_STATUS.REVEAL || session?.status === DUEL_STATUS.FINISHED;
 
   useEffect(() => {
     if (!session) return;
-    const ids = new Set();
-    (session.draftRounds || []).forEach((r) => r.options.forEach((o) => ids.add(o.id)));
+    const ids = collectRoundPlayerIds(session.draftRounds || []);
     Object.values(session.myPicks || {}).forEach((id) => ids.add(id));
     Object.values(session.theirPicks || {}).forEach((id) => ids.add(id));
     playerService.getPlayersByIds([...ids]).then(setPlayerMap);
@@ -35,17 +47,20 @@ export default function DuelDraftScreen({
     );
   }
 
-  const enrichedOptions = round.options.map((opt) => ({
+  const enrichedOptions = myOptions.map((opt) => ({
     ...opt,
     ...(playerMap[opt.id] || {}),
     id: opt.id,
     name: opt.name || playerMap[opt.id]?.name,
     team: opt.team || playerMap[opt.id]?.team,
     photoUrl: opt.photoUrl || playerMap[opt.id]?.photoUrl,
+    age: opt.age ?? playerMap[opt.id]?.age,
+    heightCm: opt.heightCm ?? playerMap[opt.id]?.heightCm,
+    marketValueM: opt.marketValueM ?? playerMap[opt.id]?.marketValueM,
   }));
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
       <div style={{ padding: '12px 16px 0', flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div style={{ fontSize: 12, color: t.accent, fontWeight: 800 }}>
@@ -75,12 +90,22 @@ export default function DuelDraftScreen({
           picks={session.myPicks}
           playerMap={playerMap}
           theme={t}
+          challenge={session.challenge}
           reveal={isReveal}
         />
       </div>
 
       {!isReveal && (
-        <div style={{ flex: 1, padding: '16px', overflowY: 'auto' }} className="scroll-hide">
+        <div
+          className="scroll-hide"
+          style={{
+            flex: 1,
+            padding: '16px',
+            paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+            overflowY: 'auto',
+            minHeight: 0,
+          }}
+        >
           <div style={{ fontSize: 12, fontWeight: 700, color: '#888', marginBottom: 10, textAlign: 'center' }}>
             {round.slotLabel} — Bir oyuncu seç
           </div>
@@ -111,7 +136,15 @@ export default function DuelDraftScreen({
       )}
 
       {isReveal && (
-        <div style={{ padding: 16, textAlign: 'center', color: t.accent, fontWeight: 800, fontSize: 13 }}>
+        <div style={{
+          padding: 16,
+          paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+          textAlign: 'center',
+          color: t.accent,
+          fontWeight: 800,
+          fontSize: 13,
+        }}
+        >
           Değerler açılıyor...
         </div>
       )}

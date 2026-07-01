@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import DuelFormationPitch from './DuelFormationPitch';
 import PlayerAvatar from './PlayerAvatar';
 import { playerService } from '../../services/playerService';
-import { buildRevealResult } from '../../utils/duelEngine';
+import { buildRevealResult, formatChallengeMetric } from '../../utils/duelEngine';
 
 export default function DuelResultScreen({ session, theme, currentUser, onClose, onRematch }) {
   const t = theme;
@@ -33,7 +33,11 @@ export default function DuelResultScreen({ session, theme, currentUser, onClose,
   const isDraw = !session.winnerUid;
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }} className="scroll-hide">
+    <div style={{
+      flex: 1, overflowY: 'auto',
+      padding: '16px',
+      paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+    }} className="scroll-hide">
       <div style={{ textAlign: 'center', marginBottom: 20 }}>
         <div style={{ fontSize: 48, marginBottom: 8 }}>{isDraw ? '🤝' : isWinner ? '🏆' : '😤'}</div>
         <div style={{ fontSize: 20, fontWeight: 900, color: isWinner ? t.accent : '#fff' }}>
@@ -71,6 +75,7 @@ export default function DuelResultScreen({ session, theme, currentUser, onClose,
           picks={session.picks?.[currentUser.uid] || {}}
           playerMap={playerMap}
           theme={t}
+          challenge={result.challenge}
           reveal
         />
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -86,7 +91,7 @@ export default function DuelResultScreen({ session, theme, currentUser, onClose,
                 <div style={{ fontSize: 10, color: '#666' }}>{p.team}</div>
               </div>
               <div style={{ fontSize: 10, color: t.accent, fontWeight: 800, textAlign: 'right' }}>
-                {p.age}y · {p.heightCm}cm · {p.marketValueM}M€
+                {formatChallengeMetric(p, result.challenge)}
               </div>
             </div>
           ))}

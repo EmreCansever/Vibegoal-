@@ -2678,7 +2678,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const otherMatches  = matches && matches.length > 1 ? matches.slice(1) : []
 
   return (
-    <div className="vg-app-shell vg-screen-fill" style={{
+    <div className="vg-dashboard-shell" style={{
       background: t.bg,
       fontFamily: 'Inter, sans-serif',
       color: '#fff',

@@ -93,7 +93,7 @@ export const playerService = {
     return Object.fromEntries(entries.filter(Boolean));
   },
 
-  async buildDraftScript(duelId) {
+  async buildDraftScript(duelId, playerAUid, playerBUid) {
     const pool = await this.getAllPlayers();
     const byGroup = { GK: [], DEF: [], MID: [], FWD: [] };
     pool.forEach((p) => {
@@ -102,32 +102,39 @@ export const playerService = {
 
     const used = new Set();
     const rounds = [];
+    const shuffledSlots = shuffleWithSeed([...FORMATION_SLOTS], `${duelId}-slots`);
 
-    FORMATION_SLOTS.forEach((slot, index) => {
-      const candidates = shuffleWithSeed(
-        byGroup[slot.posGroup].filter((p) => !used.has(p.id)),
-        `${duelId}-${slot.id}`,
-      );
+    const pickPair = (candidates, seed) => {
+      const list = shuffleWithSeed(candidates, seed);
+      return [list[0], list[1]].filter(Boolean);
+    };
 
-      let a = candidates[0];
-      let b = candidates[1];
+    shuffledSlots.forEach((slot, index) => {
+      const posCandidates = byGroup[slot.posGroup].filter((p) => !used.has(p.id));
+      const anyCandidates = pool.filter((p) => !used.has(p.id));
 
-      if (!a || !b) {
-        const fallback = shuffleWithSeed(pool.filter((p) => !used.has(p.id)), `${duelId}-fb-${index}`);
-        a = a || fallback[0];
-        b = b || fallback[1];
-      }
+      const poolA = posCandidates.length >= 2 ? posCandidates : anyCandidates;
+      const [a1, a2] = pickPair(poolA, `${duelId}-a-${slot.id}-${index}`);
+      if (!a1 || !a2) return;
+      used.add(a1.id);
+      used.add(a2.id);
 
-      if (!a || !b) return;
-
-      used.add(a.id);
-      used.add(b.id);
+      const posCandidatesB = byGroup[slot.posGroup].filter((p) => !used.has(p.id));
+      const anyCandidatesB = pool.filter((p) => !used.has(p.id));
+      const poolB = posCandidatesB.length >= 2 ? posCandidatesB : anyCandidatesB;
+      const [b1, b2] = pickPair(poolB, `${duelId}-b-${slot.id}-${index}`);
+      if (!b1 || !b2) return;
+      used.add(b1.id);
+      used.add(b2.id);
 
       rounds.push({
         round: index,
         slotId: slot.id,
         slotLabel: slot.label,
-        options: [toDraftCardSnapshot(a), toDraftCardSnapshot(b)],
+        optionsByPlayer: {
+          [playerAUid]: [toDraftCardSnapshot(a1), toDraftCardSnapshot(a2)],
+          [playerBUid]: [toDraftCardSnapshot(b1), toDraftCardSnapshot(b2)],
+        },
       });
     });
 

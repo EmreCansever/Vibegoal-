@@ -37,5 +37,8 @@ export function toDraftCardSnapshot(player) {
     position: player.position,
     photoUrl: resolvePlayerPhotoUrl(player),
     photoId: player.photoId || null,
+    age: player.age,
+    heightCm: player.heightCm,
+    marketValueM: player.marketValueM,
   };
 }

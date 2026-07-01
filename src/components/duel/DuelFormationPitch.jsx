@@ -1,5 +1,6 @@
 import { FORMATION_SLOTS } from '../../constants/duelChallenges';
 import PlayerAvatar from './PlayerAvatar';
+import { formatChallengeMetric } from '../../utils/duelEngine';
 
 const SLOT_POSITIONS = {
   GK: { top: '82%', left: '50%' },
@@ -15,7 +16,7 @@ const SLOT_POSITIONS = {
   ST2: { top: '22%', left: '62%' },
 };
 
-export default function DuelFormationPitch({ picks = {}, playerMap = {}, theme, reveal = false }) {
+export default function DuelFormationPitch({ picks = {}, playerMap = {}, theme, challenge, reveal = false }) {
   const t = theme;
 
   return (
@@ -66,9 +67,9 @@ export default function DuelFormationPitch({ picks = {}, playerMap = {}, theme, 
                 }}>
                   {player.name?.split(' ').pop()}
                 </div>
-                {reveal && (
-                  <div style={{ fontSize: 7, color: t.accent, fontWeight: 700 }}>
-                    {player.age}y · {player.heightCm}cm
+                {reveal && challenge && (
+                  <div style={{ fontSize: 8, color: t.accent, fontWeight: 700 }}>
+                    {formatChallengeMetric(player, challenge)}
                   </div>
                 )}
               </div>

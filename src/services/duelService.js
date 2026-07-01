@@ -66,6 +66,9 @@ function mapSession(d, uid) {
   const theirPicks = data.picks?.[theirUid] || {};
   const roundPicks = data.roundPicks?.[currentRound] || {};
   const activeRound = rounds[currentRound] || null;
+  const myRoundOptions = activeRound?.optionsByPlayer?.[uid]
+    || activeRound?.options
+    || [];
 
   const myPickCount = Object.keys(myPicks).length;
   const theirPickCount = Object.keys(theirPicks).length;
@@ -76,6 +79,7 @@ function mapSession(d, uid) {
     currentRound,
     totalRounds: rounds.length,
     activeRound,
+    myRoundOptions,
     myPicks,
     theirPicks,
     myPickCount,
@@ -135,7 +139,11 @@ export const duelService = {
 
     await playerService.ensureSeeded();
     const sessionId = genId('duel');
-    const draftRounds = await playerService.buildDraftScript(sessionId);
+    const draftRounds = await playerService.buildDraftScript(
+      sessionId,
+      invite.fromUid,
+      invite.toUid,
+    );
 
     const session = {
       challengeId: invite.challengeId,
@@ -212,7 +220,8 @@ export const duelService = {
       const roundData = data.draftRounds?.[round];
       if (!roundData) throw new Error('Tur bulunamadı.');
 
-      const validIds = roundData.options.map((o) => o.id);
+      const myOptions = roundData.optionsByPlayer?.[uid] || roundData.options || [];
+      const validIds = myOptions.map((o) => o.id);
       if (!validIds.includes(playerId)) throw new Error('Geçersiz oyuncu seçimi.');
 
       const roundPicks = data.roundPicks?.[round] || {};
