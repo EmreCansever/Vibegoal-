@@ -167,6 +167,26 @@ export const predictionDuelService = {
     await updateDoc(ref, { status: 'cancelled', updatedAt: serverTimestamp() });
   },
 
+  async abandonPredDuel(duelId, fallbackUid = null) {
+    if (!this.isAvailable() || !duelId) return false;
+    const ref = doc(db, 'pred_duels', duelId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return false;
+    const data = snap.data();
+    const candidates = uidCandidates(fallbackUid);
+    const uid = candidates.find((id) => data.participantIds?.includes(id));
+    if (!uid) return false;
+    if (data.status === PRED_DUEL_STATUS.FINISHED || data.status === PRED_DUEL_STATUS.CANCELLED) {
+      return true;
+    }
+    await updateDoc(ref, {
+      status: PRED_DUEL_STATUS.CANCELLED,
+      cancelledBy: uid,
+      updatedAt: serverTimestamp(),
+    });
+    return true;
+  },
+
   async syncScore(duelId, uid, { total, breakdown, matchSnapshot }) {
     if (!this.isAvailable() || !duelId || !uid) return;
     const ref = doc(db, 'pred_duels', duelId);

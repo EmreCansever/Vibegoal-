@@ -8,6 +8,7 @@ import PredictionDuelFlow from './predictionDuel/PredictionDuelFlow'
 import PredictionDuelHomeCard from './predictionDuel/PredictionDuelHomeCard'
 import PredictionDuelInviteBanner from './predictionDuel/PredictionDuelInviteBanner'
 import { duelService } from '../services/duelService'
+import { dismissDuelSession, dismissPredDuel, isDuelSessionDismissed, isPredDuelDismissed } from '../utils/duelDismiss'
 import { predictionDuelService } from '../services/predictionDuelService'
 import { DUEL_STATUS } from '../constants/duelChallenges'
 import { PRED_DUEL_STATUS } from '../constants/predictionDuel'
@@ -2118,6 +2119,8 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [duelInviteLoading, setDuelInviteLoading] = useState(false)
   const [duelInviteToast, setDuelInviteToast] = useState('')
   const autoOpenedDuelRef = useRef(null)
+  const duelOpenRef = useRef(false)
+  const predDuelOpenRef = useRef(false)
   const [predDuelOpen, setPredDuelOpen] = useState(false)
   const [predDuelInitialId, setPredDuelInitialId] = useState(null)
   const [activePredDuel, setActivePredDuel] = useState(null)
@@ -2155,30 +2158,51 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
     prevDuelInviteCountRef.current = incomingDuelInvites.length;
   }, [incomingDuelInvites.length, duelOpen]);
 
+  useEffect(() => { duelOpenRef.current = duelOpen; }, [duelOpen]);
+  useEffect(() => { predDuelOpenRef.current = predDuelOpen; }, [predDuelOpen]);
+
   useEffect(() => {
     if (!currentUser?.uid) return undefined;
     return duelService.subscribeActiveSession(currentUser.uid, (active) => {
       if (!active?.id) return;
-      if (duelOpen) return;
-      if (autoOpenedDuelRef.current === active.id) return;
-      if (active.status !== DUEL_STATUS.DRAFT && active.status !== DUEL_STATUS.REVEAL) return;
+      if (isDuelSessionDismissed(active.id)) return;
+      if (duelOpenRef.current) return;
       autoOpenedDuelRef.current = active.id;
       setDuelInitialSessionId(active.id);
       setDuelOpen(true);
     });
-  }, [currentUser?.uid, duelOpen]);
+  }, [currentUser?.uid]);
 
   useEffect(() => {
     if (!currentUser?.uid) return undefined;
     return duelService.subscribeSentInviteAccepted(currentUser.uid, (invite) => {
       if (!invite?.sessionId) return;
-      if (duelOpen) return;
-      if (autoOpenedDuelRef.current === invite.sessionId) return;
+      if (isDuelSessionDismissed(invite.sessionId)) return;
+      if (duelOpenRef.current) return;
       autoOpenedDuelRef.current = invite.sessionId;
       setDuelInitialSessionId(invite.sessionId);
       setDuelOpen(true);
     });
-  }, [currentUser?.uid, duelOpen]);
+  }, [currentUser?.uid]);
+
+  const handleCloseDuel = useCallback(async (abandonSessionId) => {
+    if (abandonSessionId) {
+      dismissDuelSession(abandonSessionId);
+      await duelService.abandonSession(abandonSessionId, currentUser?.uid).catch(() => {});
+    }
+    setDuelInitialSessionId(null);
+    setDuelOpen(false);
+  }, [currentUser?.uid]);
+
+  const handleClosePredDuel = useCallback(async (abandonDuelId) => {
+    if (abandonDuelId) {
+      dismissPredDuel(abandonDuelId);
+      await predictionDuelService.abandonPredDuel(abandonDuelId, currentUser?.uid).catch(() => {});
+    }
+    setPredDuelInitialId(null);
+    setPredDuelOpen(false);
+    setActivePredDuel(null);
+  }, [currentUser?.uid]);
 
   const handleAcceptDuelInvite = useCallback(async (invite) => {
     setDuelInviteLoading(true);
@@ -2225,16 +2249,19 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   useEffect(() => {
     if (!currentUser?.uid) return undefined;
     return predictionDuelService.subscribeActivePredDuel(currentUser.uid, (duel) => {
+      if (duel?.id && isPredDuelDismissed(duel.id)) {
+        setActivePredDuel(null);
+        return;
+      }
       setActivePredDuel(duel);
       if (!duel?.id) return;
-      if (predDuelOpen) return;
-      if (autoOpenedPredRef.current === duel.id) return;
+      if (predDuelOpenRef.current) return;
       if (duel.status !== PRED_DUEL_STATUS.LIVE) return;
       autoOpenedPredRef.current = duel.id;
       setPredDuelInitialId(duel.id);
       setPredDuelOpen(true);
     });
-  }, [currentUser?.uid, predDuelOpen]);
+  }, [currentUser?.uid]);
 
   const handleAcceptPredInvite = useCallback(async (invite) => {
     setPredInviteLoading(true);
@@ -2905,7 +2932,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       {predDuelOpen && (
         <PredictionDuelFlow
           open={predDuelOpen}
-          onClose={() => setPredDuelOpen(false)}
+          onClose={handleClosePredDuel}
           theme={t}
           currentUser={currentUser}
           userProfile={userProfile}
@@ -2920,7 +2947,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       {duelOpen && (
         <DuelFlow
           open={duelOpen}
-          onClose={() => setDuelOpen(false)}
+          onClose={handleCloseDuel}
           theme={t}
           currentUser={currentUser}
           userProfile={userProfile}

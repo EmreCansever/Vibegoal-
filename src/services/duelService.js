@@ -255,6 +255,33 @@ export const duelService = {
     await updateDoc(ref, { status: 'cancelled', updatedAt: serverTimestamp() });
   },
 
+  /** Yarım bırakılan düello — oturumu iptal et */
+  async abandonSession(sessionId, fallbackUid = null) {
+    if (!this.isAvailable() || !sessionId) return false;
+    const ref = doc(db, 'duel_sessions', sessionId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return false;
+    const data = snap.data();
+    const uid = resolveParticipantUid(data, fallbackUid || resolveAuthUid());
+    if (!uid) return false;
+    if (data.status === DUEL_STATUS.FINISHED || data.status === DUEL_STATUS.CANCELLED) {
+      return true;
+    }
+    if (!data.participantIds?.includes(uid)
+      && uid !== data.playerAUid
+      && uid !== data.playerBUid) {
+      return false;
+    }
+    await updateDoc(ref, {
+      status: DUEL_STATUS.CANCELLED,
+      cancelledBy: uid,
+      version: (Number(data.version) || 0) + 1,
+      clientUpdatedAt: Date.now(),
+      updatedAt: serverTimestamp(),
+    });
+    return true;
+  },
+
   /** Tur seçimi — Firestore transaction ile atomik senkron */
   async pickPlayer(sessionId, playerId, fallbackUid = null) {
     if (!this.isAvailable()) throw new Error('Firebase yapılandırılmamış.');

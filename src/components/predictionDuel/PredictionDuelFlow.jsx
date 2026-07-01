@@ -4,6 +4,7 @@ import { predictionDuelService } from '../../services/predictionDuelService';
 import { mapPredDuelSide } from '../../utils/predictionDuelEngine';
 import { PRED_DUEL_STATUS } from '../../constants/predictionDuel';
 import { useCallback, useEffect, useState } from 'react';
+import { isPredDuelDismissed } from '../../utils/duelDismiss';
 
 function RaceTrack({ session, theme, currentUser }) {
   const t = theme;
@@ -201,6 +202,19 @@ export default function PredictionDuelFlow({
     setToast('');
   }, [pendingInviteId]);
 
+  const handleClose = useCallback(async () => {
+    if (phase === 'waiting' && pendingInviteId) {
+      await handleCancelWaiting();
+      onClose?.();
+      return;
+    }
+    if (duelId && session?.status === PRED_DUEL_STATUS.LIVE && !isPredDuelDismissed(duelId)) {
+      onClose?.(duelId);
+      return;
+    }
+    onClose?.();
+  }, [phase, pendingInviteId, duelId, session?.status, handleCancelWaiting, onClose]);
+
   if (!open) return null;
 
   return (
@@ -209,7 +223,7 @@ export default function PredictionDuelFlow({
       <div className="vg-duel-screen" style={{ zIndex: 441, background: t.bg, color: '#fff', fontFamily: 'Inter,sans-serif' }}>
         <div className="vg-top-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${t.border}` }}>
           <div style={{ fontSize: 17, fontWeight: 900 }}>🏁 Tahmin Düellosu</div>
-          <button type="button" onClick={onClose} style={{
+          <button type="button" onClick={handleClose} style={{
             width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.06)',
             border: `1px solid ${t.border}`, color: '#888', cursor: 'pointer',
           }}>✕</button>
@@ -230,7 +244,7 @@ export default function PredictionDuelFlow({
             sending={loading}
             actionLabel="Seç →"
             onSelect={handleSelectOpponent}
-            onBack={onClose}
+            onBack={handleClose}
           />
         )}
 
@@ -266,7 +280,7 @@ export default function PredictionDuelFlow({
         )}
 
         {phase === 'result' && session && (
-          <ResultView session={session} theme={t} currentUser={currentUser} onClose={onClose} />
+          <ResultView session={session} theme={t} currentUser={currentUser} onClose={() => onClose?.()} />
         )}
       </div>
     </>

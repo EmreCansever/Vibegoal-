@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { duelService } from '../services/duelService';
+import { isDuelSessionDismissed } from '../utils/duelDismiss';
 
 /**
  * Firestore onSnapshot tabanlı düello oda/session state hook'u.
@@ -64,6 +65,7 @@ export function useActiveDuelSession(uid, onFound) {
   useEffect(() => {
     if (!uid) return undefined;
     return duelService.subscribeActiveSession(uid, (session) => {
+      if (session?.id && isDuelSessionDismissed(session.id)) return;
       if (session?.id) onFound?.(session);
     });
   }, [uid, onFound]);

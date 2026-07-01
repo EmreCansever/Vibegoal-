@@ -9,6 +9,7 @@ import { useDuelSession, useActiveDuelSession } from '../../hooks/useDuelSession
 import {
   playClickSound, playSendSound, playNotifySound, playErrorSound, playSuccessSound,
 } from '../../utils/audioEngine';
+import { isDuelSessionDismissed } from '../../utils/duelDismiss';
 
 /**
  * Canlı Düello — Firestore Session Room akışı
@@ -43,7 +44,7 @@ export default function DuelFlow({
   } = useDuelSession(sessionId, currentUser?.uid);
 
   const handleResumeSession = useCallback((active) => {
-    if (!active?.id) return;
+    if (!active?.id || isDuelSessionDismissed(active.id)) return;
     setSessionId((prev) => (prev === active.id ? prev : active.id));
     if (active.status === DUEL_STATUS.DRAFT) setPhase('draft');
     else if (active.status === DUEL_STATUS.REVEAL || active.status === DUEL_STATUS.FINISHED) {
@@ -161,6 +162,19 @@ export default function DuelFlow({
     setToast('');
   }, [pendingInviteId]);
 
+  const handleClose = useCallback(async () => {
+    if (phase === 'waiting' && pendingInviteId) {
+      await handleCancelWaiting();
+      onClose?.();
+      return;
+    }
+    if (sessionId && session?.status === DUEL_STATUS.DRAFT && !isDuelSessionDismissed(sessionId)) {
+      onClose?.(sessionId);
+      return;
+    }
+    onClose?.();
+  }, [phase, pendingInviteId, sessionId, session?.status, handleCancelWaiting, onClose]);
+
   if (!open) return null;
 
   return (
@@ -170,7 +184,7 @@ export default function DuelFlow({
           position: 'fixed', inset: 0, zIndex: 450,
           background: 'rgba(0,0,0,0.88)',
         }}
-        onClick={phase === 'hub' ? onClose : undefined}
+        onClick={phase === 'hub' ? handleClose : undefined}
       />
 
       <div className="vg-duel-screen" style={{
@@ -192,7 +206,7 @@ export default function DuelFlow({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             style={{
               width: 34, height: 34, borderRadius: 10,
               background: 'rgba(255,255,255,0.06)', border: `1px solid ${t.border}`,
@@ -217,7 +231,7 @@ export default function DuelFlow({
           <DuelChallengePicker
             theme={t}
             onSelect={(id) => { playClickSound(); setChallengeId(id); setPhase('opponent'); }}
-            onBack={onClose}
+            onBack={handleClose}
           />
         )}
 
@@ -292,7 +306,7 @@ export default function DuelFlow({
             session={session}
             theme={t}
             currentUser={currentUser}
-            onClose={onClose}
+            onClose={() => onClose?.()}
             onRematch={() => {
               setSessionId(null);
               winHandledRef.current = false;
