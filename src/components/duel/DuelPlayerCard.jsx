@@ -1,9 +1,7 @@
 import PlayerAvatar from './PlayerAvatar';
-import { formatChallengeMetric } from '../../utils/duelEngine';
 
-export default function DuelPlayerCard({ player, theme, onPick, disabled, challenge }) {
+export default function DuelPlayerCard({ player, theme, onPick, disabled }) {
   const t = theme;
-  const metricLabel = formatChallengeMetric(player, challenge);
 
   return (
     <button
@@ -26,14 +24,14 @@ export default function DuelPlayerCard({ player, theme, onPick, disabled, challe
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
         <PlayerAvatar player={player} size={72} theme={t} />
       </div>
-      <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 4 }}>{player.name}</div>
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>{player.team} · {player.position}</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 10 }}>{player.name}</div>
       <div style={{
-        fontSize: 15, fontWeight: 900, color: t.accent,
-        padding: '6px 10px', borderRadius: 8,
+        fontSize: 13, fontWeight: 900, color: t.accent,
+        padding: '8px 14px', borderRadius: 8,
         background: t.accentSoft, border: `1px solid ${t.accentBorder}`,
+        letterSpacing: 0.5,
       }}>
-        {metricLabel}
+        Seç
       </div>
     </button>
   );

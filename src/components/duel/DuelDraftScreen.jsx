@@ -125,7 +125,6 @@ export default function DuelDraftScreen({
                   key={opt.id}
                   player={opt}
                   theme={t}
-                  challenge={session.challenge}
                   disabled={picking}
                   onPick={onPick}
                 />

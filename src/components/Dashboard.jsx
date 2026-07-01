@@ -4,8 +4,14 @@ import { THEMES, withGlowOpacity } from '../App'
 import GroupChat from './GroupChat'
 import DuelFlow from './duel/DuelFlow'
 import DuelInviteBanner from './duel/DuelInviteBanner'
+import PredictionDuelFlow from './predictionDuel/PredictionDuelFlow'
+import PredictionDuelHomeCard from './predictionDuel/PredictionDuelHomeCard'
+import PredictionDuelInviteBanner from './predictionDuel/PredictionDuelInviteBanner'
 import { duelService } from '../services/duelService'
+import { predictionDuelService } from '../services/predictionDuelService'
 import { DUEL_STATUS } from '../constants/duelChallenges'
+import { PRED_DUEL_STATUS } from '../constants/predictionDuel'
+import { computePredictionDuelScore } from '../utils/predictionDuelEngine'
 import {
   calculateMatchPoints,
   calculateQuestionPoints,
@@ -758,8 +764,6 @@ function BottomNav({ theme, active, onHome, onGroups, onGames, onProfile }) {
   ]
   return (
     <nav className="vg-bottom-nav" style={{
-      flexShrink: 0,
-      zIndex: 200,
       background: t.bg,
       borderTop: `1px solid ${t.border}`,
       boxShadow: '0 -4px 24px rgba(0,0,0,0.4)',
@@ -2110,6 +2114,13 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [incomingDuelInvites, setIncomingDuelInvites] = useState([])
   const [duelInviteLoading, setDuelInviteLoading] = useState(false)
   const autoOpenedDuelRef = useRef(null)
+  const [predDuelOpen, setPredDuelOpen] = useState(false)
+  const [predDuelInitialId, setPredDuelInitialId] = useState(null)
+  const [activePredDuel, setActivePredDuel] = useState(null)
+  const [incomingPredInvites, setIncomingPredInvites] = useState([])
+  const [predInviteLoading, setPredInviteLoading] = useState(false)
+  const autoOpenedPredRef = useRef(null)
+  const predFinalizedRef = useRef(null)
   const [selectedPredictMatch, setSelectedPredictMatch] = useState(null)
 
   /* ── Sidebar drawer state ────────────────────── */
@@ -2165,6 +2176,49 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const handleDeclineDuelInvite = useCallback(async (invite) => {
     await duelService.declineInvite(invite.id);
     setIncomingDuelInvites((prev) => prev.filter((i) => i.id !== invite.id));
+  }, []);
+
+  /* ── Tahmin Düellosu dinleyicileri ── */
+  useEffect(() => {
+    if (!currentUser?.uid) return undefined;
+    return predictionDuelService.subscribeIncomingInvites(currentUser.uid, setIncomingPredInvites);
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (!currentUser?.uid) return undefined;
+    return predictionDuelService.subscribeActivePredDuel(currentUser.uid, (duel) => {
+      setActivePredDuel(duel);
+      if (!duel?.id) return;
+      if (predDuelOpen) return;
+      if (autoOpenedPredRef.current === duel.id) return;
+      if (duel.status !== PRED_DUEL_STATUS.LIVE) return;
+      autoOpenedPredRef.current = duel.id;
+      setPredDuelInitialId(duel.id);
+      setPredDuelOpen(true);
+    });
+  }, [currentUser?.uid, predDuelOpen]);
+
+  const handleAcceptPredInvite = useCallback(async (invite) => {
+    setPredInviteLoading(true);
+    try {
+      const { duelId } = await predictionDuelService.acceptInvite(invite.id, {
+        username: userProfile?.username || currentUser?.username,
+        avatar: userProfile?.avatar || '',
+      });
+      autoOpenedPredRef.current = duelId;
+      setPredDuelInitialId(duelId);
+      setPredDuelOpen(true);
+      setIncomingPredInvites((prev) => prev.filter((i) => i.id !== invite.id));
+    } catch (err) {
+      console.error('[PredDuel] accept:', err);
+    } finally {
+      setPredInviteLoading(false);
+    }
+  }, [currentUser, userProfile]);
+
+  const handleDeclinePredInvite = useCallback(async (invite) => {
+    await predictionDuelService.declineInvite(invite.id);
+    setIncomingPredInvites((prev) => prev.filter((i) => i.id !== invite.id));
   }, []);
 
   // Password fields state
@@ -2567,6 +2621,59 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
     return () => clearInterval(interval)
   }, [matches, currentUser, checkPredictions, getCalculatedMatches])
 
+  /* ── Tahmin Düellosu: canlı puan senkron + maç bitince finalize ── */
+  useEffect(() => {
+    if (!activePredDuel?.id || !currentUser?.uid) return;
+    if (activePredDuel.status !== PRED_DUEL_STATUS.LIVE) return;
+
+    const match = matches.find((m) => String(m.id) === String(activePredDuel.matchId));
+    if (!match) return;
+
+    const { total, breakdown } = computePredictionDuelScore({
+      uid: currentUser.uid,
+      matchId: activePredDuel.matchId,
+      match,
+      matchPredictions,
+      answers,
+      lockedQuestionIds: lockedAnswers,
+    });
+
+    const matchSnapshot = {
+      ...(activePredDuel.matchSnapshot || {}),
+      status: match.status,
+      minute: match.minute ?? null,
+      homeScore: match.homeScore ?? 0,
+      awayScore: match.awayScore ?? 0,
+    };
+
+    predictionDuelService.syncScore(activePredDuel.id, currentUser.uid, {
+      total,
+      breakdown,
+      matchSnapshot,
+    });
+
+    if (match.status === 'FT' && predFinalizedRef.current !== activePredDuel.id) {
+      predFinalizedRef.current = activePredDuel.id;
+      predictionDuelService.finalize(activePredDuel.id, matchSnapshot).then((result) => {
+        if (!result) return;
+        const isWinner = result.winnerUid === currentUser.uid;
+        if (isWinner) {
+          playGoalSound();
+          setToastEvent({ points: 30, reason: '🏁 Tahmin Düellosu Kazanıldı!', tier: 'exact' });
+          updateMyPoints(30, 1);
+        }
+      });
+    }
+  }, [
+    activePredDuel,
+    matches,
+    matchPredictions,
+    answers,
+    lockedAnswers,
+    currentUser?.uid,
+    updateMyPoints,
+  ]);
+
   /* ── Answer handler — sadece 1 kez +5, sonra kilitli ── */
   function handleAnswer(qId, value) {
     if (lockedAnswers.has(qId)) return
@@ -2710,6 +2817,16 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
 
       {/* Gelen düello daveti — uygulama genelinde anlık */}
+      {incomingPredInvites[0] && !predDuelOpen && (
+        <PredictionDuelInviteBanner
+          invite={incomingPredInvites[0]}
+          theme={t}
+          loading={predInviteLoading}
+          onAccept={handleAcceptPredInvite}
+          onDecline={handleDeclinePredInvite}
+        />
+      )}
+
       {incomingDuelInvites[0] && !duelOpen && (
         <DuelInviteBanner
           invite={incomingDuelInvites[0]}
@@ -2717,6 +2834,20 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
           loading={duelInviteLoading}
           onAccept={handleAcceptDuelInvite}
           onDecline={handleDeclineDuelInvite}
+        />
+      )}
+
+      {predDuelOpen && (
+        <PredictionDuelFlow
+          open={predDuelOpen}
+          onClose={() => setPredDuelOpen(false)}
+          theme={t}
+          currentUser={currentUser}
+          userProfile={userProfile}
+          opponents={leaderboard}
+          matches={matches}
+          initialDuelId={predDuelInitialId}
+          onInitialDuelConsumed={() => setPredDuelInitialId(null)}
         />
       )}
 
@@ -2882,7 +3013,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
         </>
       )}
 
-      <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="vg-dashboard-main">
         <TopBar
           theme={t}
           avatar={userProfile?.avatar || ''}
@@ -3026,31 +3157,49 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
               </div>
             </section>
 
-            {/* ── Oyunlar ─────────────────────────── */}
+            {/* ── Tahmin Düellosu ─────────────────── */}
             <section style={{ paddingTop: 26 }}>
-              <SectionTitle theme={t}>Oyunlar</SectionTitle>
+              <SectionTitle theme={t}>Tahmin Düellosu</SectionTitle>
+              <div style={{ padding: '0 16px' }}>
+                <PredictionDuelHomeCard
+                  theme={t}
+                  activeDuel={activePredDuel}
+                  currentUser={currentUser}
+                  onJoin={() => setPredDuelOpen(true)}
+                  onOpenLive={() => {
+                    if (activePredDuel?.id) {
+                      setPredDuelInitialId(activePredDuel.id);
+                    }
+                    setPredDuelOpen(true);
+                  }}
+                />
+              </div>
+            </section>
+
+            {/* Canlı Düello — Oyunlar sekmesinden */}
+            <section style={{ paddingTop: 18 }}>
+              <SectionTitle theme={t}>Canlı Düello</SectionTitle>
               <div style={{ padding: '0 16px' }}>
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '14px 14px', borderRadius: 16,
                   background: t.surface, border: `1px solid ${t.border}`,
-                  flexWrap: 'wrap',
                 }}>
                   <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: t.accentSoft, border: `1px solid ${t.accentBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>⚔️</div>
-                  <div style={{ flex: '1 1 120px', minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>Tahmin Düellosu</div>
-                    <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>Rakibini seç, birebir kapış</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>Kadro Düellosu</div>
+                    <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>11&apos;lik draft · gizli değerler</div>
                   </div>
                   <button
+                    type="button"
                     onClick={() => setDuelOpen(true)}
                     style={{
-                      flex: '1 1 auto', minWidth: 0, padding: '9px 14px', borderRadius: 10,
-                      background: t.accent, color: t.tabActiveText,
-                      border: 'none', fontWeight: 800, fontSize: 12, cursor: 'pointer',
-                      boxShadow: `0 0 14px ${t.glow}`, fontFamily: 'Inter,sans-serif',
-                      whiteSpace: 'nowrap',
+                      padding: '9px 14px', borderRadius: 10,
+                      background: t.surface, color: t.accent,
+                      border: `1px solid ${t.accentBorder}`, fontWeight: 800, fontSize: 12, cursor: 'pointer',
+                      fontFamily: 'Inter,sans-serif', whiteSpace: 'nowrap',
                     }}
-                  >Hemen Katıl</button>
+                  >Oyna</button>
                 </div>
               </div>
             </section>
