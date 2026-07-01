@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
-import { resolvePlayerPhotoUrl } from '../../utils/playerPhotos';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  buildApiSportsPhotoUrl,
+  enrichPlayerFromSeed,
+  resolveApiSportsPlayerId,
+  resolvePlayerPhotoUrl,
+} from '../../utils/playerPhotos';
 
-function DefaultPlayerSilhouette({ size = 56 }) {
+export function DefaultPlayerSilhouette({ size = 56 }) {
   const iconSize = Math.round(size * 0.52);
   return (
     <svg
@@ -25,14 +30,33 @@ export default function PlayerAvatar({ player, size = 56, theme, border = true }
     accentBorder: 'rgba(163,230,53,0.3)',
     accentSoft: 'rgba(163,230,53,0.12)',
   };
-  const src = resolvePlayerPhotoUrl(player);
-  const [imgFailed, setImgFailed] = useState(false);
+
+  const enriched = useMemo(() => enrichPlayerFromSeed(player), [player]);
+  const primarySrc = useMemo(() => resolvePlayerPhotoUrl(enriched), [enriched]);
+  const cdnFallbackSrc = useMemo(() => {
+    const apiId = resolveApiSportsPlayerId(enriched);
+    return apiId ? buildApiSportsPhotoUrl(apiId) : null;
+  }, [enriched]);
+
+  const [srcIndex, setSrcIndex] = useState(0);
+
+  const candidates = useMemo(() => {
+    const list = [];
+    if (primarySrc) list.push(primarySrc);
+    if (cdnFallbackSrc && cdnFallbackSrc !== primarySrc) list.push(cdnFallbackSrc);
+    return list;
+  }, [primarySrc, cdnFallbackSrc]);
 
   useEffect(() => {
-    setImgFailed(false);
-  }, [player?.id, src]);
+    setSrcIndex(0);
+  }, [player?.id, primarySrc, cdnFallbackSrc]);
 
-  const showPhoto = !!src && !imgFailed;
+  const activeSrc = srcIndex < candidates.length ? candidates[srcIndex] : null;
+  const showPhoto = !!activeSrc;
+
+  const handleError = () => {
+    setSrcIndex((prev) => (prev + 1 < candidates.length ? prev + 1 : candidates.length));
+  };
 
   return (
     <div style={{
@@ -49,12 +73,12 @@ export default function PlayerAvatar({ player, size = 56, theme, border = true }
     }}>
       {showPhoto ? (
         <img
-          src={src}
-          alt={player?.name || 'Oyuncu'}
+          src={activeSrc}
+          alt={enriched?.name || 'Oyuncu'}
           loading="lazy"
           decoding="async"
           style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }}
-          onError={() => setImgFailed(true)}
+          onError={handleError}
         />
       ) : (
         <DefaultPlayerSilhouette size={size} />

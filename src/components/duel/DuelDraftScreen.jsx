@@ -1,9 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DuelFormationPitch from './DuelFormationPitch';
 import DuelPlayerCard from './DuelPlayerCard';
 import { playerService } from '../../services/playerService';
 import { DUEL_STATUS } from '../../constants/duelChallenges';
-import { resolvePlayerPhotoUrl } from '../../utils/playerPhotos';
+import {
+  buildPlayerMapFromDraft,
+  collectSessionPlayerIds,
+  mergePlayerMaps,
+} from '../../utils/duelEngine';
+import { resolvePlayerPhotoUrl, enrichPlayerFromSeed, resolveApiSportsPlayerId } from '../../utils/playerPhotos';
 
 function collectRoundPlayerIds(rounds = []) {
   const ids = new Set();
@@ -25,7 +30,36 @@ export default function DuelDraftScreen({
   lastSyncMs = null,
 }) {
   const t = theme;
-  const [playerMap, setPlayerMap] = useState({});
+  const [remotePlayerMap, setRemotePlayerMap] = useState({});
+
+  const draftPlayerMap = useMemo(() => {
+    if (!session) return {};
+    const draft = buildPlayerMapFromDraft(session);
+    const map = { ...draft };
+    collectSessionPlayerIds(session).forEach((id) => {
+      map[id] = enrichPlayerFromSeed(map[id] || { id, name: 'Oyuncu' });
+    });
+    return map;
+  }, [session?.id, session?.version, session?.myPickCount, session?.draftRounds, session?.myPicks]);
+
+  useEffect(() => {
+    if (!session) {
+      setRemotePlayerMap({});
+      return;
+    }
+    const ids = collectSessionPlayerIds(session);
+    collectRoundPlayerIds(session.draftRounds || []).forEach((id) => ids.add(id));
+    if (ids.size === 0) {
+      setRemotePlayerMap({});
+      return;
+    }
+    playerService.getPlayersByIds([...ids]).then(setRemotePlayerMap);
+  }, [session?.id, session?.version, session?.myPickCount, session?.draftRounds]);
+
+  const playerMap = useMemo(
+    () => mergePlayerMaps(draftPlayerMap, remotePlayerMap),
+    [draftPlayerMap, remotePlayerMap],
+  );
 
   const round = session?.activeRound;
   const myOptions = session?.myRoundOptions || [];
@@ -33,14 +67,6 @@ export default function DuelDraftScreen({
   const isReveal = session?.status === DUEL_STATUS.REVEAL || session?.status === DUEL_STATUS.FINISHED;
   const waitingForResult = session?.status === DUEL_STATUS.DRAFT
     && session.currentRound >= session.totalRounds;
-
-  useEffect(() => {
-    if (!session) return;
-    const ids = collectRoundPlayerIds(session.draftRounds || []);
-    Object.values(session.myPicks || {}).forEach((id) => ids.add(id));
-    Object.values(session.theirPicks || {}).forEach((id) => ids.add(id));
-    playerService.getPlayersByIds([...ids]).then(setPlayerMap);
-  }, [session]);
 
   if (!session) {
     return (
@@ -78,12 +104,19 @@ export default function DuelDraftScreen({
   }
 
   const enrichedOptions = myOptions.map((opt) => {
-    const merged = { ...opt, ...(playerMap[opt.id] || {}), id: opt.id };
+    const remote = playerMap[opt.id] || {};
+    const merged = enrichPlayerFromSeed({
+      ...remote,
+      ...opt,
+      id: opt.id,
+      photoId: opt.photoId ?? remote.photoId,
+    });
     return {
       ...merged,
       name: opt.name || merged.name,
       team: opt.team || merged.team,
-      photoUrl: merged.photoUrl || resolvePlayerPhotoUrl(merged) || null,
+      photoUrl: resolvePlayerPhotoUrl(merged),
+      photoId: merged.photoId ?? resolveApiSportsPlayerId(merged),
       age: opt.age ?? merged.age,
       heightCm: opt.heightCm ?? merged.heightCm,
       marketValueM: opt.marketValueM ?? merged.marketValueM,

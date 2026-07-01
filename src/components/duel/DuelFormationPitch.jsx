@@ -1,6 +1,7 @@
 import { FORMATION_SLOTS } from '../../constants/duelChallenges';
 import PlayerAvatar from './PlayerAvatar';
 import { formatChallengeMetric } from '../../utils/duelEngine';
+import { enrichPlayerFromSeed } from '../../utils/playerPhotos';
 
 const SLOT_POSITIONS = {
   GK: { top: '82%', left: '50%' },
@@ -44,7 +45,9 @@ export default function DuelFormationPitch({ picks = {}, playerMap = {}, theme, 
       {FORMATION_SLOTS.map((slot) => {
         const pos = SLOT_POSITIONS[slot.id];
         const playerId = picks[slot.id];
-        const player = playerId ? playerMap[playerId] : null;
+        const player = playerId
+          ? enrichPlayerFromSeed(playerMap[playerId] || { id: playerId, name: 'Oyuncu' })
+          : null;
 
         return (
           <div
@@ -58,7 +61,7 @@ export default function DuelFormationPitch({ picks = {}, playerMap = {}, theme, 
               textAlign: 'center',
             }}
           >
-            {player ? (
+            {playerId ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <PlayerAvatar player={player} size={44} theme={t} />
                 <div style={{

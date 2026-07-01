@@ -1,8 +1,10 @@
 import PlayerAvatar from './PlayerAvatar';
+import { enrichPlayerFromSeed, resolvePlayerPhotoUrl } from '../../utils/playerPhotos';
 import { playPickSound } from '../../utils/audioEngine';
 
 export default function DuelPlayerCard({ player, theme, onPick, disabled }) {
   const t = theme;
+  const displayPlayer = enrichPlayerFromSeed(player);
 
   return (
     <button
@@ -26,9 +28,9 @@ export default function DuelPlayerCard({ player, theme, onPick, disabled }) {
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-        <PlayerAvatar player={player} size={72} theme={t} />
+        <PlayerAvatar player={displayPlayer} size={72} theme={t} />
       </div>
-      <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 10 }}>{player.name}</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 10 }}>{displayPlayer.name}</div>
       <div style={{
         fontSize: 13, fontWeight: 900, color: t.accent,
         padding: '8px 14px', borderRadius: 8,

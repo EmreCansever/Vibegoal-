@@ -1,7 +1,7 @@
 /**
  * Önbelleklenmiş oyuncu havuzu — photoId → media.api-sports.io CDN
  */
-export const PLAYERS_SEED_VERSION = 7;
+export const PLAYERS_SEED_VERSION = 8;
 
 export const PLAYERS_SEED = [
   { id: 'pl_001', name: 'Alisson', team: 'Liverpool', position: 'GK', age: 31, heightCm: 193, marketValueM: 28, photoId: 283 },
