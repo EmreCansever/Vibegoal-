@@ -25,6 +25,7 @@ export default function DuelFlow({
   onWin,
   initialSessionId = null,
   onInitialSessionConsumed,
+  isJoining = false,
 }) {
   const t = theme;
   const uid = currentUser?.uid;
@@ -192,6 +193,56 @@ export default function DuelFlow({
   const showForceQuit = phase !== 'hub';
 
   if (!open) return null;
+
+  if (isJoining) {
+    return (
+      <>
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 450,
+          background: 'rgba(0,0,0,0.88)',
+        }} />
+        <div className="vg-duel-screen" style={{
+          background: t.bg,
+          fontFamily: 'Inter,sans-serif',
+          color: '#fff',
+        }}>
+          <div className="vg-top-bar" style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            borderBottom: `1px solid ${t.border}`, flexShrink: 0,
+          }}>
+            <div style={{ fontSize: 17, fontWeight: 900 }}>⚔️ Canlı Düello</div>
+            <button
+              type="button"
+              disabled
+              style={{
+                width: 34, height: 34, borderRadius: 10,
+                background: 'rgba(255,255,255,0.06)', border: `1px solid ${t.border}`,
+                color: '#555', fontSize: 16, cursor: 'default',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+          <div style={{
+            flex: 1, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center',
+          }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: '50%',
+              border: `3px solid ${t.accentBorder}`,
+              borderTopColor: t.accent,
+              animation: 'vg-spin 0.9s linear infinite',
+              marginBottom: 18,
+            }} />
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>Düello hazırlanıyor…</div>
+            <div style={{ fontSize: 12, color: '#888', lineHeight: 1.5 }}>
+              Draft odası oluşturuluyor, birkaç saniye sürebilir.
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

@@ -22,6 +22,7 @@ import {
   where,
   runTransaction,
   serverTimestamp,
+  writeBatch,
 } from 'firebase/firestore';
 import {
   auth,
@@ -182,10 +183,13 @@ export const duelService = {
   /** Davet kabul → Session Room oluştur */
   async acceptInvite(inviteId, acceptorProfile = {}) {
     if (!this.isAvailable()) throw new Error('Firebase yapılandırılmamış.');
-    await waitForAuthReady(2500);
+
     const fallbackUid = acceptorProfile.uid || null;
-    const authUid = resolveAuthUid(fallbackUid);
-    if (!authUid && !fallbackUid) throw new Error('Oturum gerekli.');
+    if (!fallbackUid) {
+      await waitForAuthReady(1500);
+    }
+    const acceptorUid = resolveAuthUid(fallbackUid) || fallbackUid;
+    if (!acceptorUid) throw new Error('Oturum gerekli.');
 
     const inviteRef = doc(db, 'duel_invites', inviteId);
     const inviteSnap = await getDoc(inviteRef);
@@ -196,25 +200,26 @@ export const duelService = {
     }
     if (invite.status !== 'pending') throw new Error('Davet artık geçerli değil.');
 
-    await playerService.ensureSeeded();
+    playerService.ensureSeeded().catch(() => {});
+
     const sessionId = genId('duel');
-    const draftRounds = await playerService.buildDraftScript(
+    const draftRounds = playerService.buildDraftScriptSync(
       sessionId,
       invite.fromUid,
-      invite.toUid,
+      acceptorUid,
     );
 
     const session = {
       challengeId: invite.challengeId,
       playerAUid: invite.fromUid,
-      playerBUid: invite.toUid,
+      playerBUid: acceptorUid,
       playerAName: invite.fromUsername || 'Oyuncu A',
       playerBName: acceptorProfile.username || 'Oyuncu B',
-      participantIds: [invite.fromUid, invite.toUid],
+      participantIds: [invite.fromUid, acceptorUid],
       status: DUEL_STATUS.DRAFT,
       currentRound: 0,
       draftRounds,
-      picks: { [invite.fromUid]: {}, [invite.toUid]: {} },
+      picks: { [invite.fromUid]: {}, [acceptorUid]: {} },
       roundPicks: {},
       winnerUid: null,
       winnerSide: null,
@@ -226,13 +231,15 @@ export const duelService = {
       updatedAt: serverTimestamp(),
     };
 
-    await setDoc(doc(db, 'duel_sessions', sessionId), session);
-    await updateDoc(inviteRef, {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'duel_sessions', sessionId), session);
+    batch.update(inviteRef, {
       status: 'accepted',
       duelId: sessionId,
       sessionId,
       updatedAt: serverTimestamp(),
     });
+    await batch.commit();
 
     return { sessionId, duelId: sessionId, inviteId };
   },

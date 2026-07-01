@@ -106,9 +106,13 @@ export const predictionDuelService = {
 
   async acceptInvite(inviteId, acceptorProfile = {}) {
     if (!this.isAvailable()) throw new Error('Firebase yapılandırılmamış.');
-    await waitForAuthReady(2500);
+
     const fallbackUid = acceptorProfile.uid || null;
-    if (!resolveAuthUid(fallbackUid) && !fallbackUid) throw new Error('Oturum gerekli.');
+    if (!fallbackUid) {
+      await waitForAuthReady(1500);
+    }
+    const acceptorUid = resolveAuthUid(fallbackUid) || fallbackUid;
+    if (!acceptorUid) throw new Error('Oturum gerekli.');
 
     const inviteRef = doc(db, 'pred_duel_invites', inviteId);
     const inviteSnap = await getDoc(inviteRef);
@@ -121,16 +125,16 @@ export const predictionDuelService = {
     const session = {
       type: 'prediction',
       playerAUid: invite.fromUid,
-      playerBUid: invite.toUid,
+      playerBUid: acceptorUid,
       playerAName: invite.fromUsername || 'Oyuncu A',
       playerBName: acceptorProfile.username || 'Oyuncu B',
-      participantIds: [invite.fromUid, invite.toUid],
+      participantIds: [invite.fromUid, acceptorUid],
       matchId: invite.matchId,
       matchSnapshot: invite.matchSnapshot,
       status: PRED_DUEL_STATUS.LIVE,
       scores: {
         [invite.fromUid]: { total: 0, participation: 0, matchResult: 0, questions: 0 },
-        [invite.toUid]: { total: 0, participation: 0, matchResult: 0, questions: 0 },
+        [acceptorUid]: { total: 0, participation: 0, matchResult: 0, questions: 0 },
       },
       winnerUid: null,
       winnerSide: null,

@@ -122,9 +122,17 @@ export const playerService = {
     return Object.fromEntries(entries.filter(Boolean));
   },
 
-  /** 11 tur garanti — her tur bir boş mevki, sadece o gruptan oyuncu */
-  async buildDraftScript(duelId, playerAUid, playerBUid) {
-    const pool = await this.getAllPlayers();
+  /** 11 tur garanti — yerel seed (Firestore beklemeden, anında) */
+  buildDraftScriptSync(duelId, playerAUid, playerBUid) {
+    return this._buildDraftRoundsFromPool(
+      PLAYERS_SEED.map(normalizeFromSeed),
+      duelId,
+      playerAUid,
+      playerBUid,
+    );
+  },
+
+  _buildDraftRoundsFromPool(pool, duelId, playerAUid, playerBUid) {
     const byGroup = { GK: [], DEF: [], MID: [], FWD: [] };
     pool.forEach((p) => {
       if (byGroup[p.position]) byGroup[p.position].push(p);
@@ -170,5 +178,11 @@ export const playerService = {
     }
 
     return rounds;
+  },
+
+  /** 11 tur garanti — Firestore havuzundan (finalize vb. için) */
+  async buildDraftScript(duelId, playerAUid, playerBUid) {
+    const pool = await this.getAllPlayers();
+    return this._buildDraftRoundsFromPool(pool, duelId, playerAUid, playerBUid);
   },
 };

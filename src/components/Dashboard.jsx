@@ -8,6 +8,7 @@ import PredictionDuelFlow from './predictionDuel/PredictionDuelFlow'
 import PredictionDuelHomeCard from './predictionDuel/PredictionDuelHomeCard'
 import PredictionDuelInviteBanner from './predictionDuel/PredictionDuelInviteBanner'
 import { duelService } from '../services/duelService'
+import { playerService } from '../services/playerService'
 import { dismissDuelSession, dismissPredDuel, isDuelSessionDismissed, isPredDuelDismissed } from '../utils/duelDismiss'
 import { predictionDuelService } from '../services/predictionDuelService'
 import { DUEL_STATUS } from '../constants/duelChallenges'
@@ -2152,6 +2153,10 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   }, [currentUser?.uid]);
 
   useEffect(() => {
+    playerService.ensureSeeded().catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (incomingDuelInvites.length > prevDuelInviteCountRef.current && !duelOpen) {
       playNotifySound();
     }
@@ -2195,6 +2200,8 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const handleAcceptDuelInvite = useCallback(async (invite) => {
     setDuelInviteLoading(true);
     setDuelInviteToast('');
+    setDuelInitialSessionId(null);
+    setDuelOpen(true);
     try {
       const { sessionId } = await duelService.acceptInvite(invite.id, {
         uid: currentUser?.uid,
@@ -2203,13 +2210,13 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       });
       autoOpenedDuelRef.current = sessionId;
       setDuelInitialSessionId(sessionId);
-      setDuelOpen(true);
       playSuccessSound();
       setIncomingDuelInvites((prev) => prev.filter((i) => i.id !== invite.id));
     } catch (err) {
       playErrorSound();
       const msg = err?.message || 'Davet kabul edilemedi.';
       setDuelInviteToast(msg);
+      setDuelOpen(false);
       console.error('[Duel] accept invite:', err);
     } finally {
       setDuelInviteLoading(false);
@@ -2247,6 +2254,8 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
   const handleAcceptPredInvite = useCallback(async (invite) => {
     setPredInviteLoading(true);
+    setPredDuelInitialId(null);
+    setPredDuelOpen(true);
     try {
       const { duelId } = await predictionDuelService.acceptInvite(invite.id, {
         uid: currentUser?.uid,
@@ -2255,11 +2264,11 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       });
       autoOpenedPredRef.current = duelId;
       setPredDuelInitialId(duelId);
-      setPredDuelOpen(true);
       playSuccessSound();
       setIncomingPredInvites((prev) => prev.filter((i) => i.id !== invite.id));
     } catch (err) {
       playErrorSound();
+      setPredDuelOpen(false);
       console.error('[PredDuel] accept:', err);
     } finally {
       setPredInviteLoading(false);
@@ -2922,6 +2931,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
           matches={matches}
           initialDuelId={predDuelInitialId}
           onInitialDuelConsumed={() => setPredDuelInitialId(null)}
+          isJoining={predInviteLoading && !predDuelInitialId}
         />
       )}
 
@@ -2936,6 +2946,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
           opponents={leaderboard}
           initialSessionId={duelInitialSessionId}
           onInitialSessionConsumed={() => setDuelInitialSessionId(null)}
+          isJoining={duelInviteLoading && !duelInitialSessionId}
           onWin={() => {
             playGoalSound();
             setTotalPoints((p) => p + 50);

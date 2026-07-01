@@ -114,6 +114,7 @@ export default function PredictionDuelFlow({
   matches = [],
   initialDuelId = null,
   onInitialDuelConsumed,
+  isJoining = false,
 }) {
   const t = theme;
   const [phase, setPhase] = useState('opponent');
@@ -238,6 +239,29 @@ export default function PredictionDuelFlow({
   const showForceQuit = phase !== 'opponent';
 
   if (!open) return null;
+
+  if (isJoining) {
+    return (
+      <>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 440, background: 'rgba(0,0,0,0.88)' }} />
+        <div className="vg-duel-screen" style={{ zIndex: 441, background: t.bg, color: '#fff', fontFamily: 'Inter,sans-serif' }}>
+          <div className="vg-top-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${t.border}` }}>
+            <div style={{ fontSize: 17, fontWeight: 900 }}>🏁 Tahmin Düellosu</div>
+          </div>
+          <div style={{
+            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', padding: 32, textAlign: 'center',
+          }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: '50%', border: `3px solid ${t.accentBorder}`,
+              borderTopColor: t.accent, animation: 'vg-spin 0.9s linear infinite', marginBottom: 18,
+            }} />
+            <div style={{ fontSize: 16, fontWeight: 800 }}>Yarış hazırlanıyor…</div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
