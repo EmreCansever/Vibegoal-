@@ -1,4 +1,5 @@
 import PlayerAvatar from './PlayerAvatar';
+import { playPickSound } from '../../utils/audioEngine';
 
 export default function DuelPlayerCard({ player, theme, onPick, disabled }) {
   const t = theme;
@@ -7,7 +8,10 @@ export default function DuelPlayerCard({ player, theme, onPick, disabled }) {
     <button
       type="button"
       disabled={disabled}
-      onClick={() => onPick?.(player.id)}
+      onClick={() => {
+        playPickSound();
+        onPick?.(player.id);
+      }}
       style={{
         flex: 1,
         padding: '16px 12px',

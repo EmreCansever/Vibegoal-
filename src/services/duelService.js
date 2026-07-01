@@ -31,7 +31,28 @@ import {
 } from './firebase';
 import { playerService } from './playerService';
 import { buildRevealResult } from '../utils/duelEngine';
-import { DUEL_STATUS, getChallengeById } from '../constants/duelChallenges';
+import { DUEL_STATUS, FORMATION_SLOTS, getChallengeById } from '../constants/duelChallenges';
+
+const REQUIRED_PICKS = FORMATION_SLOTS.length;
+
+function resolvePickSlotId(existingPicks, roundData, playerPosition) {
+  const group = roundData.slotPosGroup;
+  if (playerPosition && group && playerPosition !== group) {
+    throw new Error('Bu oyuncu bu mevki için uygun değil.');
+  }
+  const targetSlot = roundData.slotId;
+  if (!existingPicks?.[targetSlot]) return targetSlot;
+
+  const fallback = FORMATION_SLOTS.find(
+    (s) => s.posGroup === group && !existingPicks[s.id],
+  );
+  if (!fallback) throw new Error('Bu mevki için boş slot kalmadı.');
+  return fallback.id;
+}
+
+function countPicks(picksObj) {
+  return Object.keys(picksObj || {}).length;
+}
 
 function genId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -225,19 +246,25 @@ export const duelService = {
       if (!validIds.includes(playerId)) throw new Error('Geçersiz oyuncu seçimi.');
 
       const pickedOption = myOptions.find((o) => o.id === playerId);
-      const slotGroup = roundData.slotPosGroup;
-      if (slotGroup && pickedOption?.position && pickedOption.position !== slotGroup) {
+      if (roundData.slotPosGroup && pickedOption?.position
+        && pickedOption.position !== roundData.slotPosGroup) {
         throw new Error('Bu oyuncu bu mevki için uygun değil.');
       }
+
+      const existingUserPicks = data.picks?.[uid] || {};
+      const slotId = resolvePickSlotId(existingUserPicks, roundData, pickedOption?.position);
+      if (existingUserPicks[slotId]) throw new Error('Bu slot zaten dolu.');
 
       const roundPicks = data.roundPicks?.[round] || {};
       if (roundPicks[uid]) throw new Error('Bu turda zaten seçim yaptınız.');
 
-      const slotId = roundData.slotId;
       const newRoundPicks = { ...roundPicks, [uid]: playerId };
       const bothDone = newRoundPicks[data.playerAUid] && newRoundPicks[data.playerBUid];
       const nextRound = bothDone ? round + 1 : round;
-      const allRoundsDone = bothDone && nextRound >= (data.draftRounds?.length || 11);
+      const totalRounds = data.draftRounds?.length || REQUIRED_PICKS;
+      const allRoundsDone = bothDone
+        && nextRound >= totalRounds
+        && totalRounds >= REQUIRED_PICKS;
 
       const patch = {
         [`picks.${uid}.${slotId}`]: playerId,
@@ -267,6 +294,13 @@ export const duelService = {
     if (!snap.exists()) return null;
     const data = snap.data();
     if (data.status !== DUEL_STATUS.DRAFT) return null;
+
+    const picksA = countPicks(data.picks?.[data.playerAUid]);
+    const picksB = countPicks(data.picks?.[data.playerBUid]);
+    if (picksA < REQUIRED_PICKS || picksB < REQUIRED_PICKS) {
+      console.warn(`[Duel] Erken finalize engellendi: A=${picksA} B=${picksB}`);
+      return null;
+    }
 
     const allIds = new Set();
     Object.values(data.picks || {}).forEach((slots) => {

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import AuthScreen from './components/AuthScreen'
 import SplashScreen from './components/SplashScreen'
 import { authService } from './services/dataService'
+import { primeAudioContext } from './utils/audioEngine'
 
 const Dashboard = lazy(() => import('./components/Dashboard'))
 const RoomScreen = lazy(() => import('./components/RoomScreen'))
@@ -154,6 +155,16 @@ export default function App() {
 
   // Global tema değişkenleri: her rotada (Dashboard mount olmasa da) güncel kalsın.
   // Bileşenlerdeki color-mix(var(--vg-accent) ...) kullanımları buna bağlı.
+  useEffect(() => {
+    const prime = () => primeAudioContext()
+    window.addEventListener('pointerdown', prime, { once: true })
+    window.addEventListener('keydown', prime, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', prime)
+      window.removeEventListener('keydown', prime)
+    }
+  }, [])
+
   useEffect(() => {
     const r = document.documentElement
     r.style.setProperty('--vg-accent', theme.accent)

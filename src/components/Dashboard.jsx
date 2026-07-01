@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { playClickSound, playGoalSound, playSendSound, playSuccessSound } from '../utils/audioEngine'
+import { playClickSound, playGoalSound, playSendSound, playSuccessSound, playNavSound, playNotifySound, playErrorSound, playDefeatSound } from '../utils/audioEngine'
 import { THEMES, withGlowOpacity } from '../App'
 import GroupChat from './GroupChat'
 import DuelFlow from './duel/DuelFlow'
@@ -774,7 +774,10 @@ function BottomNav({ theme, active, onHome, onGroups, onGames, onProfile }) {
         return (
           <button
             key={it.id}
-            onClick={it.onClick}
+            onClick={() => {
+              if (!on) playNavSound()
+              it.onClick?.()
+            }}
             style={{
               flex: 1, background: 'transparent', border: 'none', cursor: 'pointer',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
@@ -2135,12 +2138,21 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
   const [avatarInput, setAvatarInput]     = useState(userProfile?.avatar || '')
   const [bioInput, setBioInput]           = useState(userProfile?.bio || '')
   const photoInputRef                     = useRef(null)
+  const prevDuelInviteCountRef            = useRef(0)
+  const prevPredInviteCountRef            = useRef(0)
 
   /* ── Canlı düello: global davet + oturum dinleyicileri ── */
   useEffect(() => {
     if (!currentUser?.uid) return undefined;
     return duelService.subscribeIncomingInvites(currentUser.uid, setIncomingDuelInvites);
   }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (incomingDuelInvites.length > prevDuelInviteCountRef.current && !duelOpen) {
+      playNotifySound();
+    }
+    prevDuelInviteCountRef.current = incomingDuelInvites.length;
+  }, [incomingDuelInvites.length, duelOpen]);
 
   useEffect(() => {
     if (!currentUser?.uid) return undefined;
@@ -2165,8 +2177,10 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       autoOpenedDuelRef.current = sessionId;
       setDuelInitialSessionId(sessionId);
       setDuelOpen(true);
+      playSuccessSound();
       setIncomingDuelInvites((prev) => prev.filter((i) => i.id !== invite.id));
     } catch (err) {
+      playErrorSound();
       console.error('[Duel] accept invite:', err);
     } finally {
       setDuelInviteLoading(false);
@@ -2183,6 +2197,13 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
     if (!currentUser?.uid) return undefined;
     return predictionDuelService.subscribeIncomingInvites(currentUser.uid, setIncomingPredInvites);
   }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (incomingPredInvites.length > prevPredInviteCountRef.current && !predDuelOpen) {
+      playNotifySound();
+    }
+    prevPredInviteCountRef.current = incomingPredInvites.length;
+  }, [incomingPredInvites.length, predDuelOpen]);
 
   useEffect(() => {
     if (!currentUser?.uid) return undefined;
@@ -2208,8 +2229,10 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
       autoOpenedPredRef.current = duelId;
       setPredDuelInitialId(duelId);
       setPredDuelOpen(true);
+      playSuccessSound();
       setIncomingPredInvites((prev) => prev.filter((i) => i.id !== invite.id));
     } catch (err) {
+      playErrorSound();
       console.error('[PredDuel] accept:', err);
     } finally {
       setPredInviteLoading(false);
@@ -2661,6 +2684,8 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
           playGoalSound();
           setToastEvent({ points: 30, reason: '🏁 Tahmin Düellosu Kazanıldı!', tier: 'exact' });
           updateMyPoints(30, 1);
+        } else if (result.winnerUid) {
+          playDefeatSound();
         }
       });
     }
@@ -2735,7 +2760,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
     }
     setMatchPredictions(updated)
     dbService.savePredictions(currentUser.uid, updated)
-    playClickSound()
+    playSuccessSound()
 
     const match = matches.find(m => m.id === matchId)
     const matchName = match ? `${match.home} vs ${match.away}` : `Maç #${matchId}`
@@ -2776,6 +2801,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
 
   function openMatchDetail(match) {
     if (!match?.id) return
+    playClickSound()
     cacheMatchSnapshot(match)
     onNavigate('match/' + match.id)
   }
@@ -3863,6 +3889,7 @@ export default function Dashboard({ onNavigate, params = {}, theme, onCycleTheme
                     const nextVal = !soundEnabled
                     setSoundEnabled(nextVal)
                     localStorage.setItem('vg_settings_sound', String(nextVal))
+                    if (nextVal) playClickSound()
                   }}
                   style={{
                     width: 44, height: 24, borderRadius: 12,
@@ -4117,12 +4144,14 @@ function PredictionModal({ match, prediction, onSave, onClose, theme }) {
 
   function handleSave() {
     if (homeScore.trim() === '' || awayScore.trim() === '') {
+      playErrorSound()
       setError('Lütfen her iki skoru da girin!')
       return
     }
     const h = parseInt(homeScore)
     const a = parseInt(awayScore)
     if (isNaN(h) || isNaN(a) || h < 0 || a < 0) {
+      playErrorSound()
       setError('Geçersiz skor girdiniz!')
       return
     }

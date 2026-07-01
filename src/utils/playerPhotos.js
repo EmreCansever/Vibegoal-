@@ -1,9 +1,4 @@
-const CDN_BASE = 'https://media.api-sports.io/football/players';
-
-export function photoUrlFromId(photoId) {
-  if (!photoId) return '';
-  return `${CDN_BASE}/${photoId}.png`;
-}
+import { PLAYER_PHOTO_MAP } from '../data/playerPhotoMap';
 
 export function fallbackPhotoUrl(name = 'Player') {
   const label = encodeURIComponent(String(name).trim() || 'Player');
@@ -13,17 +8,18 @@ export function fallbackPhotoUrl(name = 'Player') {
 /** Oyuncu objesinden görüntülenecek foto URL */
 export function resolvePlayerPhotoUrl(player) {
   if (!player) return fallbackPhotoUrl('Player');
-  if (player.photoUrl) return player.photoUrl;
-  if (player.photoId) return photoUrlFromId(player.photoId);
+  if (player.id && PLAYER_PHOTO_MAP[player.id]) return PLAYER_PHOTO_MAP[player.id];
+  if (player.photoUrl && !player.photoUrl.includes('api-sports.io')) return player.photoUrl;
   return fallbackPhotoUrl(player.name);
 }
 
 /** Firestore'a yazılacak normalize edilmiş oyuncu */
 export function normalizePlayerRecord(player) {
-  const photoUrl = player.photoUrl || photoUrlFromId(player.photoId) || fallbackPhotoUrl(player.name);
+  const photoUrl = resolvePlayerPhotoUrl(player);
   return {
     ...player,
     photoUrl,
+    photoId: null,
     updatedAt: Date.now(),
   };
 }
@@ -36,7 +32,6 @@ export function toDraftCardSnapshot(player) {
     team: player.team,
     position: player.position,
     photoUrl: resolvePlayerPhotoUrl(player),
-    photoId: player.photoId || null,
     age: player.age,
     heightCm: player.heightCm,
     marketValueM: player.marketValueM,

@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import DuelFormationPitch from './DuelFormationPitch';
 import PlayerAvatar from './PlayerAvatar';
 import { playerService } from '../../services/playerService';
 import { buildRevealResult, formatChallengeMetric } from '../../utils/duelEngine';
+import { playSuccessSound, playDefeatSound, playRevealSound } from '../../utils/audioEngine';
 
 export default function DuelResultScreen({ session, theme, currentUser, onClose, onRematch }) {
   const t = theme;
   const [playerMap, setPlayerMap] = useState({});
   const [result, setResult] = useState(null);
+  const soundPlayedRef = useRef(false);
 
   useEffect(() => {
     if (!session) return;
@@ -20,6 +22,19 @@ export default function DuelResultScreen({ session, theme, currentUser, onClose,
       setResult(buildRevealResult(session, map));
     });
   }, [session]);
+
+  useEffect(() => {
+    if (!result || !session || soundPlayedRef.current) return;
+    soundPlayedRef.current = true;
+    playRevealSound();
+    const isDraw = !session.winnerUid;
+    const isWinner = session.winnerUid === currentUser.uid;
+    setTimeout(() => {
+      if (isDraw) return;
+      if (isWinner) playSuccessSound();
+      else playDefeatSound();
+    }, 350);
+  }, [result, session, currentUser?.uid]);
 
   if (!session || !result) {
     return <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>Sonuç hesaplanıyor...</div>;

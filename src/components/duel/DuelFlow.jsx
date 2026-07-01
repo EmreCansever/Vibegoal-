@@ -6,6 +6,9 @@ import DuelResultScreen from './DuelResultScreen';
 import { duelService } from '../../services/duelService';
 import { DUEL_STATUS } from '../../constants/duelChallenges';
 import { useDuelSession, useActiveDuelSession } from '../../hooks/useDuelSession';
+import {
+  playClickSound, playSendSound, playNotifySound, playErrorSound, playSuccessSound,
+} from '../../utils/audioEngine';
 
 /**
  * Canlı Düello — Firestore Session Room akışı
@@ -73,6 +76,7 @@ export default function DuelFlow({
     return duelService.subscribeInvite(pendingInviteId, currentUser?.uid, (invite) => {
       if (!invite) return;
       if (invite.status === 'accepted' && invite.sessionId) {
+        playNotifySound();
         setPendingInviteId(null);
         setSessionId(invite.sessionId);
         setPhase('draft');
@@ -120,8 +124,10 @@ export default function DuelFlow({
       });
       setPendingInviteId(invite.id);
       setPhase('waiting');
+      playSendSound();
       setToast(`✓ ${opponent.name} oyuncusuna davet gönderildi — kabul bekleniyor…`);
     } catch (err) {
+      playErrorSound();
       setToast(err?.message || 'Davet gönderilemedi.');
     } finally {
       setInviteLoading(false);
@@ -194,7 +200,7 @@ export default function DuelFlow({
         {phase === 'hub' && (
           <DuelChallengePicker
             theme={t}
-            onSelect={(id) => { setChallengeId(id); setPhase('opponent'); }}
+            onSelect={(id) => { playClickSound(); setChallengeId(id); setPhase('opponent'); }}
             onBack={onClose}
           />
         )}

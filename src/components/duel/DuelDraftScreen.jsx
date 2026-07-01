@@ -3,6 +3,7 @@ import DuelFormationPitch from './DuelFormationPitch';
 import DuelPlayerCard from './DuelPlayerCard';
 import { playerService } from '../../services/playerService';
 import { DUEL_STATUS } from '../../constants/duelChallenges';
+import { resolvePlayerPhotoUrl } from '../../utils/playerPhotos';
 
 function collectRoundPlayerIds(rounds = []) {
   const ids = new Set();
@@ -47,17 +48,18 @@ export default function DuelDraftScreen({
     );
   }
 
-  const enrichedOptions = myOptions.map((opt) => ({
-    ...opt,
-    ...(playerMap[opt.id] || {}),
-    id: opt.id,
-    name: opt.name || playerMap[opt.id]?.name,
-    team: opt.team || playerMap[opt.id]?.team,
-    photoUrl: opt.photoUrl || playerMap[opt.id]?.photoUrl,
-    age: opt.age ?? playerMap[opt.id]?.age,
-    heightCm: opt.heightCm ?? playerMap[opt.id]?.heightCm,
-    marketValueM: opt.marketValueM ?? playerMap[opt.id]?.marketValueM,
-  }));
+  const enrichedOptions = myOptions.map((opt) => {
+    const merged = { ...opt, ...(playerMap[opt.id] || {}), id: opt.id };
+    return {
+      ...merged,
+      name: opt.name || merged.name,
+      team: opt.team || merged.team,
+      photoUrl: resolvePlayerPhotoUrl(merged),
+      age: opt.age ?? merged.age,
+      heightCm: opt.heightCm ?? merged.heightCm,
+      marketValueM: opt.marketValueM ?? merged.marketValueM,
+    };
+  });
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>

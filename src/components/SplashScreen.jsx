@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { playRevealSound } from '../utils/audioEngine'
 
 /* ─────────────────────────────────────────────────
    SPLASH SCREEN — Karşılama Ekranı
@@ -11,7 +12,10 @@ export default function SplashScreen({ onFinish }) {
 
   useEffect(() => {
     // Görünür kalma süresi → fade-out tetikle
-    const leaveTimer = setTimeout(() => setLeaving(true), 900)
+    const leaveTimer = setTimeout(() => {
+      playRevealSound()
+      setLeaving(true)
+    }, 900)
     const doneTimer = setTimeout(() => onFinish && onFinish(), 1200)
     return () => {
       clearTimeout(leaveTimer)

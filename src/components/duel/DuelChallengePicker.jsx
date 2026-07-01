@@ -1,4 +1,5 @@
 import { DUEL_CHALLENGES } from '../../constants/duelChallenges';
+import { playClickSound } from '../../utils/audioEngine';
 
 export default function DuelChallengePicker({ theme, onSelect, onBack }) {
   const t = theme;
@@ -18,7 +19,7 @@ export default function DuelChallengePicker({ theme, onSelect, onBack }) {
           <button
             key={c.id}
             type="button"
-            onClick={() => onSelect(c.id)}
+            onClick={() => { playClickSound(); onSelect(c.id); }}
             style={{
               padding: '18px 14px',
               borderRadius: 16,

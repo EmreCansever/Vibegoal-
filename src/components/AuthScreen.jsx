@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { authService } from '../services/dataService'
 import { signInWithGoogle, signInWithApple, sendPasswordReset } from '../services/firebase'
 import { getAuthErrorMessage } from '../utils/authErrors'
+import { playSuccessSound, playErrorSound, playClickSound } from '../utils/audioEngine'
 
 /* ─────────────────────────────────────────────────
    CYBERPUNK NEON GLOW STYLE INJECTION
@@ -127,6 +128,7 @@ export default function AuthScreen({ onAuth }) {
 
   // Clean error and toggle fields on mode switch
   const switchMode = (targetMode) => {
+    playClickSound()
     setMode(targetMode)
     setError('')
     setSuccessMsg('')
@@ -137,6 +139,7 @@ export default function AuthScreen({ onAuth }) {
 
   const triggerError = (msg) => {
     setError(msg)
+    playErrorSound()
     setShake(true)
     setTimeout(() => setShake(false), 550)
   }
@@ -176,6 +179,7 @@ export default function AuthScreen({ onAuth }) {
     try {
       const res = await authService.login({ email, password })
       if (res.success) {
+        playSuccessSound()
         onAuth(res.user)
       } else {
         triggerError(getAuthErrorMessage(res.error))
@@ -199,6 +203,7 @@ export default function AuthScreen({ onAuth }) {
     try {
       const res = await authService.register({ username, email, password })
       if (res.success) {
+        playSuccessSound()
         onAuth(res.user)
       } else {
         triggerError(getAuthErrorMessage(res.error))
@@ -224,6 +229,7 @@ export default function AuthScreen({ onAuth }) {
 
       const res = await authService.socialLogin(firebaseUser)
       if (res.success) {
+        playSuccessSound()
         onAuth(res.user)
       } else {
         triggerError(getAuthErrorMessage(res.error || 'Oturum açılamadı.'))

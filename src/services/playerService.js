@@ -13,8 +13,30 @@ import { normalizePlayerRecord, toDraftCardSnapshot } from '../utils/playerPhoto
 
 let seedPromise = null;
 
+const SLOTS_PER_GROUP = FORMATION_SLOTS.reduce((acc, slot) => {
+  acc[slot.posGroup] = (acc[slot.posGroup] || 0) + 1;
+  return acc;
+}, {});
+
 function normalizeFromSeed(player) {
   return normalizePlayerRecord(player);
+}
+
+function allocateRoundOptions(candidates, remainingInGroup, duelId, slot, index) {
+  if (candidates.length < 2) return null;
+
+  const shuffled = shuffleWithSeed(candidates, `${duelId}-${slot.id}-${index}`);
+  const canOfferTwoEach = candidates.length >= remainingInGroup * 2 + 2;
+  const perSide = canOfferTwoEach ? 2 : 1;
+  const need = perSide * 2;
+
+  if (shuffled.length < need) return null;
+
+  return {
+    optionsA: shuffled.slice(0, perSide).map(toDraftCardSnapshot),
+    optionsB: shuffled.slice(perSide, perSide * 2).map(toDraftCardSnapshot),
+    used: shuffled.slice(0, need),
+  };
 }
 
 export const playerService = {
@@ -35,26 +57,11 @@ export const playerService = {
         const normalized = normalizeFromSeed(raw);
         const prev = existingById[raw.id];
 
-        if (!prev) {
+        if (!prev || (prev.seedVersion ?? 0) < PLAYERS_SEED_VERSION) {
           batch.set(doc(db, 'players', raw.id), {
             ...normalized,
             seedVersion: PLAYERS_SEED_VERSION,
-          });
-          hasWrites = true;
-          return;
-        }
-
-        const needsUpdate = (prev.seedVersion ?? 0) < PLAYERS_SEED_VERSION
-          || prev.photoUrl !== normalized.photoUrl
-          || prev.photoId !== raw.photoId
-          || prev.position !== raw.position
-          || prev.name !== raw.name;
-
-        if (needsUpdate) {
-          batch.update(doc(db, 'players', raw.id), {
-            ...normalized,
-            seedVersion: PLAYERS_SEED_VERSION,
-          });
+          }, { merge: true });
           hasWrites = true;
         }
       });
@@ -100,7 +107,7 @@ export const playerService = {
     return Object.fromEntries(entries.filter(Boolean));
   },
 
-  /** Her tur = sahadaki bir boş mevki; yalnızca o mevki grubundan oyuncu */
+  /** 11 tur garanti — her tur bir boş mevki, sadece o gruptan oyuncu */
   async buildDraftScript(duelId, playerAUid, playerBUid) {
     const pool = await this.getAllPlayers();
     const byGroup = { GK: [], DEF: [], MID: [], FWD: [] };
@@ -109,18 +116,22 @@ export const playerService = {
     });
 
     const used = new Set();
+    const remainingByGroup = { ...SLOTS_PER_GROUP };
     const rounds = [];
     const slotOrder = shuffleWithSeed([...FORMATION_SLOTS], `${duelId}-slots`);
 
     slotOrder.forEach((slot, index) => {
+      const remaining = remainingByGroup[slot.posGroup];
       const posCandidates = byGroup[slot.posGroup].filter((p) => !used.has(p.id));
-      if (posCandidates.length < 4) return;
+      const allocation = allocateRoundOptions(posCandidates, remaining, duelId, slot, index);
 
-      const shuffled = shuffleWithSeed(posCandidates, `${duelId}-${slot.id}-${index}`);
-      const [a1, a2, b1, b2] = shuffled.slice(0, 4);
-      if (!a1 || !a2 || !b1 || !b2) return;
+      if (!allocation) {
+        console.error(`[Draft] Yetersiz ${slot.posGroup} oyuncu — slot ${slot.id}`);
+        return;
+      }
 
-      [a1, a2, b1, b2].forEach((p) => used.add(p.id));
+      allocation.used.forEach((p) => used.add(p.id));
+      remainingByGroup[slot.posGroup] -= 1;
 
       rounds.push({
         round: rounds.length,
@@ -128,11 +139,15 @@ export const playerService = {
         slotLabel: slot.label,
         slotPosGroup: slot.posGroup,
         optionsByPlayer: {
-          [playerAUid]: [toDraftCardSnapshot(a1), toDraftCardSnapshot(a2)],
-          [playerBUid]: [toDraftCardSnapshot(b1), toDraftCardSnapshot(b2)],
+          [playerAUid]: allocation.optionsA,
+          [playerBUid]: allocation.optionsB,
         },
       });
     });
+
+    if (rounds.length !== FORMATION_SLOTS.length) {
+      throw new Error(`Draft script eksik: ${rounds.length}/11 tur oluşturuldu.`);
+    }
 
     return rounds;
   },

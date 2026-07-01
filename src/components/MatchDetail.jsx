@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { fetchMatchDetail, loadCachedMatch, cacheMatchSnapshot } from '../services/footballApi';
 import { withGlowOpacity } from '../App';
+import { playClickSound } from '../utils/audioEngine';
 
 function getStatValue(teamStats, statName, defaultValue = 0) {
   const stat = teamStats?.statistics?.find(s => s.type === statName);
@@ -157,7 +158,7 @@ export default function MatchDetail({ theme }) {
           {fetchError || 'Bu maça ait veri bulunamadı veya maç sona ermiş olabilir.'}
         </div>
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => { playClickSound(); navigate('/dashboard'); }}
           style={{
             padding: '10px 24px',
             borderRadius: 12,
@@ -222,7 +223,7 @@ export default function MatchDetail({ theme }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => { playClickSound(); navigate('/dashboard'); }}
             style={{
               background: 'none', border: 'none', color: '#888',
               fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center',

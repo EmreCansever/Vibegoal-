@@ -1,19 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════
    VIBEGOAL — Otonom Ses Motoru (Web Audio API)
-   
-   Harici .mp3 dosyasına bağımlılık SIFIR.
-   Tarayıcının kendi AudioContext altyapısını kullanarak
-   otonom çıt (click) ve çift tonlu (goal) ses efektleri üretir.
-   
-   Kullanım:
-     import { playClickSound, playGoalSound, playSendSound } from './audioEngine'
-     
-     onClick={() => playClickSound()}      // Buton tıklama
-     onGoal={() => playGoalSound()}        // Gol olayı
-     onSend={() => playSendSound()}        // Mesaj gönderme
+   Harici dosya yok; Web Audio ile prosedürel efektler.
 ═══════════════════════════════════════════════════════════════ */
 
 let audioCtx = null
+let primed = false
 
 function getAudioContext() {
   if (!audioCtx) {
@@ -24,15 +15,28 @@ function getAudioContext() {
       return null
     }
   }
-  // Resume if suspended (mobile browsers often require user gesture)
   if (audioCtx.state === 'suspended') {
     audioCtx.resume().catch(() => {})
   }
   return audioCtx
 }
 
-/** Ayarlardan ses efekti etkin mi kontrol et */
-function isSoundEnabled() {
+/** Mobil tarayıcılar için ilk dokunuşta ses bağlamını aç */
+export function primeAudioContext() {
+  if (primed) return
+  const ctx = getAudioContext()
+  if (!ctx) return
+  primed = true
+  const osc = ctx.createOscillator()
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.001, ctx.currentTime)
+  osc.connect(gain)
+  gain.connect(ctx.destination)
+  osc.start()
+  osc.stop(ctx.currentTime + 0.01)
+}
+
+export function isSoundEnabled() {
   try {
     return localStorage.getItem('vg_settings_sound') !== 'false'
   } catch {
@@ -40,129 +44,104 @@ function isSoundEnabled() {
   }
 }
 
-/* ─────────────────────────────────────────────────
-   CLICK SES — Kısa, keskin tık sesi
-   Tahmin butonları ve genel tıklama aksiyonları için.
-───────────────────────────────────────────────── */
+export function setSoundEnabled(enabled) {
+  try {
+    localStorage.setItem('vg_settings_sound', String(enabled))
+  } catch { /* ignore */ }
+}
+
+function playTone({
+  type = 'sine',
+  freqStart,
+  freqEnd,
+  start = 0,
+  duration = 0.08,
+  volume = 0.14,
+  ramp = 'exp',
+}) {
+  if (!isSoundEnabled()) return
+  const ctx = getAudioContext()
+  if (!ctx) return
+
+  const t0 = ctx.currentTime + start
+  const osc = ctx.createOscillator()
+  const gain = ctx.createGain()
+  osc.type = type
+  osc.frequency.setValueAtTime(freqStart, t0)
+  if (freqEnd != null) {
+    if (ramp === 'exp') {
+      osc.frequency.exponentialRampToValueAtTime(Math.max(freqEnd, 1), t0 + duration)
+    } else {
+      osc.frequency.linearRampToValueAtTime(freqEnd, t0 + duration)
+    }
+  }
+  gain.gain.setValueAtTime(volume, t0)
+  gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration)
+  osc.connect(gain)
+  gain.connect(ctx.destination)
+  osc.start(t0)
+  osc.stop(t0 + duration + 0.02)
+}
+
+function playChord(notes, { start = 0, spacing = 0.1, duration = 0.18, volume = 0.12 } = {}) {
+  notes.forEach((freq, i) => {
+    playTone({ freqStart: freq, start: start + i * spacing, duration, volume: volume - i * 0.02 })
+  })
+}
+
+/** Genel buton / seçim tıklaması */
 export function playClickSound() {
-  if (!isSoundEnabled()) return
-  const ctx = getAudioContext()
-  if (!ctx) return
-
-  const osc = ctx.createOscillator()
-  const gain = ctx.createGain()
-
-  osc.type = 'sine'
-  osc.frequency.setValueAtTime(1200, ctx.currentTime)
-  osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.06)
-
-  gain.gain.setValueAtTime(0.15, ctx.currentTime)
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08)
-
-  osc.connect(gain)
-  gain.connect(ctx.destination)
-
-  osc.start(ctx.currentTime)
-  osc.stop(ctx.currentTime + 0.08)
+  playTone({ freqStart: 1200, freqEnd: 800, duration: 0.07, volume: 0.13 })
 }
 
-/* ─────────────────────────────────────────────────
-   GOAL SES — Çift tonlu zafer sesi 🎯⚽
-   Gol olayı veya doğru tahmin geldiğinde tetiklenir.
-   Kısa arpej: düşük ton → yüksek ton (kutlama hissi)
-───────────────────────────────────────────────── */
-export function playGoalSound() {
-  if (!isSoundEnabled()) return
-  const ctx = getAudioContext()
-  if (!ctx) return
-
-  // Ton 1 — düşük nota
-  const osc1 = ctx.createOscillator()
-  const gain1 = ctx.createGain()
-  osc1.type = 'sine'
-  osc1.frequency.setValueAtTime(523.25, ctx.currentTime)  // C5
-  gain1.gain.setValueAtTime(0.18, ctx.currentTime)
-  gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2)
-  osc1.connect(gain1)
-  gain1.connect(ctx.destination)
-  osc1.start(ctx.currentTime)
-  osc1.stop(ctx.currentTime + 0.2)
-
-  // Ton 2 — yüksek nota (arpej efekti)
-  const osc2 = ctx.createOscillator()
-  const gain2 = ctx.createGain()
-  osc2.type = 'sine'
-  osc2.frequency.setValueAtTime(783.99, ctx.currentTime + 0.12)  // G5
-  gain2.gain.setValueAtTime(0, ctx.currentTime)
-  gain2.gain.setValueAtTime(0.2, ctx.currentTime + 0.12)
-  gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
-  osc2.connect(gain2)
-  gain2.connect(ctx.destination)
-  osc2.start(ctx.currentTime + 0.12)
-  osc2.stop(ctx.currentTime + 0.4)
-
-  // Ton 3 — en yüksek nota (final)
-  const osc3 = ctx.createOscillator()
-  const gain3 = ctx.createGain()
-  osc3.type = 'sine'
-  osc3.frequency.setValueAtTime(1046.5, ctx.currentTime + 0.25)  // C6
-  gain3.gain.setValueAtTime(0, ctx.currentTime)
-  gain3.gain.setValueAtTime(0.15, ctx.currentTime + 0.25)
-  gain3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55)
-  osc3.connect(gain3)
-  gain3.connect(ctx.destination)
-  osc3.start(ctx.currentTime + 0.25)
-  osc3.stop(ctx.currentTime + 0.55)
+/** Alt navigasyon sekmesi */
+export function playNavSound() {
+  playTone({ type: 'triangle', freqStart: 520, freqEnd: 780, duration: 0.09, volume: 0.11 })
 }
 
-/* ─────────────────────────────────────────────────
-   SEND SES — Mesaj gönderme sesi
-   Kısa "swoosh" hissi — yumuşak frekans kayması.
-───────────────────────────────────────────────── */
+/** Draft / kart seçimi */
+export function playPickSound() {
+  playTone({ type: 'square', freqStart: 440, freqEnd: 660, duration: 0.1, volume: 0.09 })
+  playTone({ type: 'sine', freqStart: 880, start: 0.05, duration: 0.08, volume: 0.07, freqEnd: 880 })
+}
+
+/** Mesaj gönderme */
 export function playSendSound() {
-  if (!isSoundEnabled()) return
-  const ctx = getAudioContext()
-  if (!ctx) return
-
-  const osc = ctx.createOscillator()
-  const gain = ctx.createGain()
-
-  osc.type = 'sine'
-  osc.frequency.setValueAtTime(600, ctx.currentTime)
-  osc.frequency.exponentialRampToValueAtTime(1400, ctx.currentTime + 0.1)
-
-  gain.gain.setValueAtTime(0.12, ctx.currentTime)
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12)
-
-  osc.connect(gain)
-  gain.connect(ctx.destination)
-
-  osc.start(ctx.currentTime)
-  osc.stop(ctx.currentTime + 0.12)
+  playTone({ freqStart: 600, freqEnd: 1400, duration: 0.11, volume: 0.11 })
 }
 
-/* ─────────────────────────────────────────────────
-   SUCCESS SES — Başarı / Puan kazanma sesi
-   Düello kazanma veya tahmin kilitleme için.
-───────────────────────────────────────────────── */
+/** Başarı / kazanma / giriş */
 export function playSuccessSound() {
-  if (!isSoundEnabled()) return
-  const ctx = getAudioContext()
-  if (!ctx) return
+  playChord([523.25, 659.25, 783.99], { spacing: 0.08, duration: 0.16, volume: 0.13 })
+}
 
-  const osc = ctx.createOscillator()
-  const gain = ctx.createGain()
+/** Gol / büyük zafer */
+export function playGoalSound() {
+  playTone({ freqStart: 523.25, duration: 0.2, volume: 0.16, freqEnd: 523.25 })
+  playTone({ freqStart: 783.99, start: 0.12, duration: 0.22, volume: 0.17, freqEnd: 783.99 })
+  playTone({ freqStart: 1046.5, start: 0.24, duration: 0.28, volume: 0.14, freqEnd: 1046.5 })
+}
 
-  osc.type = 'triangle'
-  osc.frequency.setValueAtTime(880, ctx.currentTime)
-  osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.15)
+/** Kaybetme */
+export function playDefeatSound() {
+  playTone({ type: 'triangle', freqStart: 440, freqEnd: 220, duration: 0.35, volume: 0.12, ramp: 'exp' })
+  playTone({ type: 'triangle', freqStart: 330, freqEnd: 165, start: 0.12, duration: 0.4, volume: 0.1, ramp: 'exp' })
+}
 
-  gain.gain.setValueAtTime(0.14, ctx.currentTime)
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2)
+/** Hata / uyarı */
+export function playErrorSound() {
+  playTone({ type: 'sawtooth', freqStart: 280, freqEnd: 180, duration: 0.14, volume: 0.08 })
+  playTone({ type: 'sawtooth', freqStart: 220, freqEnd: 140, start: 0.1, duration: 0.14, volume: 0.07 })
+}
 
-  osc.connect(gain)
-  gain.connect(ctx.destination)
+/** Davet / bildirim */
+export function playNotifySound() {
+  playTone({ type: 'triangle', freqStart: 880, freqEnd: 1174.66, duration: 0.12, volume: 0.12 })
+  playTone({ type: 'triangle', freqStart: 1174.66, start: 0.1, duration: 0.14, volume: 0.1, freqEnd: 880 })
+}
 
-  osc.start(ctx.currentTime)
-  osc.stop(ctx.currentTime + 0.2)
+/** Tur tamamlandı / sonuç açılışı */
+export function playRevealSound() {
+  playTone({ type: 'sine', freqStart: 392, freqEnd: 523.25, duration: 0.2, volume: 0.11 })
+  playTone({ type: 'sine', freqStart: 523.25, freqEnd: 659.25, start: 0.15, duration: 0.22, volume: 0.1 })
 }

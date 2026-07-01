@@ -16,6 +16,8 @@ const SLOT_POSITIONS = {
   ST2: { top: '22%', left: '62%' },
 };
 
+import { resolvePlayerPhotoUrl } from '../../utils/playerPhotos';
+
 export default function DuelFormationPitch({ picks = {}, playerMap = {}, theme, challenge, reveal = false }) {
   const t = theme;
 
@@ -44,7 +46,8 @@ export default function DuelFormationPitch({ picks = {}, playerMap = {}, theme, 
       {FORMATION_SLOTS.map((slot) => {
         const pos = SLOT_POSITIONS[slot.id];
         const playerId = picks[slot.id];
-        const player = playerId ? playerMap[playerId] : null;
+        const raw = playerId ? playerMap[playerId] : null;
+        const player = raw ? { ...raw, photoUrl: resolvePlayerPhotoUrl(raw) } : null;
 
         return (
           <div
